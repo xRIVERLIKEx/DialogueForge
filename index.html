@@ -807,7 +807,12 @@
                           "interactions": [
                             {
                               "on_interact": {
-                                "filters": { "test": "is_family", "subject": "other", "value": "player" },
+                                "filters": {
+                                  "all_of": [
+                                    { "test": "is_family", "subject": "other", "value": "player" },
+                                    { "test": "has_ability", "subject": "other", "operator": "not", "value": "worldbuilder" }
+                                  ]
+                                },
                                 "event": `${entityId}:start_dialogue`,
                                 "target": "self"
                               },
