@@ -66,6 +66,157 @@
         };
 
         const defaultColors = ['#00FFFF', '#FF3366', '#33FF33', '#9933FF'];
+        
+        const MINECRAFT_ITEMS = [
+            { id: '', name: 'None' },
+            { id: 'apple', name: 'Apple' },
+            { id: 'arrow', name: 'Arrow' },
+            { id: 'baked_potato', name: 'Baked Potato' },
+            { id: 'bone', name: 'Bone' },
+            { id: 'book', name: 'Book' },
+            { id: 'experience_bottle', name: 'Bottle o\' Enchanting' },
+            { id: 'bow', name: 'Bow' },
+            { id: 'bread', name: 'Bread' },
+            { id: 'bucket', name: 'Bucket' },
+            { id: 'carrot', name: 'Carrot' },
+            { id: 'coal', name: 'Coal' },
+            { id: 'cobblestone', name: 'Cobblestone' },
+            { id: 'compass', name: 'Compass' },
+            { id: 'cooked_beef', name: 'Cooked Beef' },
+            { id: 'cooked_chicken', name: 'Cooked Chicken' },
+            { id: 'cooked_porkchop', name: 'Cooked Porkchop' },
+            { id: 'cookie', name: 'Cookie' },
+            { id: 'copper_ingot', name: 'Copper Ingot' },
+            { id: 'crossbow', name: 'Crossbow' },
+            { id: 'diamond', name: 'Diamond' },
+            { id: 'diamond_axe', name: 'Diamond Axe' },
+            { id: 'diamond_boots', name: 'Diamond Boots' },
+            { id: 'diamond_chestplate', name: 'Diamond Chestplate' },
+            { id: 'diamond_helmet', name: 'Diamond Helmet' },
+            { id: 'diamond_hoe', name: 'Diamond Hoe' },
+            { id: 'diamond_leggings', name: 'Diamond Leggings' },
+            { id: 'diamond_pickaxe', name: 'Diamond Pickaxe' },
+            { id: 'diamond_shovel', name: 'Diamond Shovel' },
+            { id: 'diamond_sword', name: 'Diamond Sword' },
+            { id: 'dirt', name: 'Dirt' },
+            { id: 'emerald', name: 'Emerald' },
+            { id: 'enchanted_book', name: 'Enchanted Book' },
+            { id: 'enchanted_golden_apple', name: 'Enchanted Golden Apple' },
+            { id: 'ender_pearl', name: 'Ender Pearl' },
+            { id: 'feather', name: 'Feather' },
+            { id: 'fishing_rod', name: 'Fishing Rod' },
+            { id: 'flint', name: 'Flint' },
+            { id: 'flint_and_steel', name: 'Flint and Steel' },
+            { id: 'glass', name: 'Glass' },
+            { id: 'glowstone_dust', name: 'Glowstone Dust' },
+            { id: 'gold_ingot', name: 'Gold Ingot' },
+            { id: 'gold_nugget', name: 'Gold Nugget' },
+            { id: 'golden_apple', name: 'Golden Apple' },
+            { id: 'golden_carrot', name: 'Golden Carrot' },
+            { id: 'golden_sword', name: 'Golden Sword' },
+            { id: 'gunpowder', name: 'Gunpowder' },
+            { id: 'iron_axe', name: 'Iron Axe' },
+            { id: 'iron_boots', name: 'Iron Boots' },
+            { id: 'iron_chestplate', name: 'Iron Chestplate' },
+            { id: 'iron_helmet', name: 'Iron Helmet' },
+            { id: 'iron_hoe', name: 'Iron Hoe' },
+            { id: 'iron_ingot', name: 'Iron Ingot' },
+            { id: 'iron_leggings', name: 'Iron Leggings' },
+            { id: 'iron_nugget', name: 'Iron Nugget' },
+            { id: 'iron_pickaxe', name: 'Iron Pickaxe' },
+            { id: 'iron_shovel', name: 'Iron Shovel' },
+            { id: 'iron_sword', name: 'Iron Sword' },
+            { id: 'lapis_lazuli', name: 'Lapis Lazuli' },
+            { id: 'leather', name: 'Leather' },
+            { id: 'melon_slice', name: 'Melon Slice' },
+            { id: 'name_tag', name: 'Name Tag' },
+            { id: 'nether_star', name: 'Nether Star' },
+            { id: 'quartz', name: 'Nether Quartz' },
+            { id: 'netherite_ingot', name: 'Netherite Ingot' },
+            { id: 'netherite_sword', name: 'Netherite Sword' },
+            { id: 'obsidian', name: 'Obsidian' },
+            { id: 'paper', name: 'Paper' },
+            { id: 'potion', name: 'Potion' },
+            { id: 'pumpkin_pie', name: 'Pumpkin Pie' },
+            { id: 'beef', name: 'Raw Beef' },
+            { id: 'redstone', name: 'Redstone Dust' },
+            { id: 'rotten_flesh', name: 'Rotten Flesh' },
+            { id: 'saddle', name: 'Saddle' },
+            { id: 'shield', name: 'Shield' },
+            { id: 'slime_ball', name: 'Slimeball' },
+            { id: 'snowball', name: 'Snowball' },
+            { id: 'spider_eye', name: 'Spider Eye' },
+            { id: 'stick', name: 'Stick' },
+            { id: 'stone', name: 'Stone' },
+            { id: 'stone_axe', name: 'Stone Axe' },
+            { id: 'stone_hoe', name: 'Stone Hoe' },
+            { id: 'stone_pickaxe', name: 'Stone Pickaxe' },
+            { id: 'stone_shovel', name: 'Stone Shovel' },
+            { id: 'stone_sword', name: 'Stone Sword' },
+            { id: 'sugar', name: 'Sugar' },
+            { id: 'sweet_berries', name: 'Sweet Berries' },
+            { id: 'torch', name: 'Torch' },
+            { id: 'totem_of_undying', name: 'Totem of Undying' },
+            { id: 'wheat', name: 'Wheat' },
+            { id: 'wooden_axe', name: 'Wooden Axe' },
+            { id: 'wooden_hoe', name: 'Wooden Hoe' },
+            { id: 'wooden_pickaxe', name: 'Wooden Pickaxe' },
+            { id: 'wooden_shovel', name: 'Wooden Shovel' },
+            { id: 'wooden_sword', name: 'Wooden Sword' }
+        ];
+
+        const MINECRAFT_SOUNDS = [
+            { id: '', name: 'None' },
+            { id: 'random.anvil_use', name: 'Anvil Use' },
+            { id: 'armor.equip_chain', name: 'Armor Equip (Chain)' },
+            { id: 'armor.equip_diamond', name: 'Armor Equip (Diamond)' },
+            { id: 'armor.equip_gold', name: 'Armor Equip (Gold)' },
+            { id: 'armor.equip_iron', name: 'Armor Equip (Iron)' },
+            { id: 'armor.equip_leather', name: 'Armor Equip (Leather)' },
+            { id: 'block.bell.hit', name: 'Bell Ring' },
+            { id: 'mob.blaze.shoot', name: 'Blaze Shoot' },
+            { id: 'random.bow', name: 'Bow Shoot' },
+            { id: 'ui.button.click', name: 'Button Click' },
+            { id: 'mob.cat.meow', name: 'Cat Meow' },
+            { id: 'random.chestclosed', name: 'Chest Close' },
+            { id: 'random.chestopen', name: 'Chest Open' },
+            { id: 'mob.chicken.say', name: 'Chicken Cluck' },
+            { id: 'mob.cow.say', name: 'Cow Moo' },
+            { id: 'random.fuse', name: 'Creeper Hiss' },
+            { id: 'mob.enderdragon.growl', name: 'Ender Dragon Growl' },
+            { id: 'mob.endermen.portal', name: 'Enderman Teleport' },
+            { id: 'random.orb', name: 'Experience Orb' },
+            { id: 'firework.blast', name: 'Firework Blast' },
+            { id: 'firework.launch', name: 'Firework Launch' },
+            { id: 'mob.ghast.fireball', name: 'Ghast Shoot' },
+            { id: 'random.glass', name: 'Glass Break' },
+            { id: 'mob.horse.idle', name: 'Horse Neigh' },
+            { id: 'mob.irongolem.hit', name: 'Iron Golem Hit' },
+            { id: 'random.levelup', name: 'Level Up' },
+            { id: 'ambient.weather.thunder', name: 'Lightning Strike' },
+            { id: 'note.bass', name: 'Note Block (Bass)' },
+            { id: 'note.chime', name: 'Note Block (Chime)' },
+            { id: 'note.flute', name: 'Note Block (Flute)' },
+            { id: 'note.guitar', name: 'Note Block (Guitar)' },
+            { id: 'note.harp', name: 'Note Block (Harp)' },
+            { id: 'note.pling', name: 'Note Block (Pling)' },
+            { id: 'note.snare', name: 'Note Block (Snare)' },
+            { id: 'mob.pig.say', name: 'Pig Oink' },
+            { id: 'item.shield.block', name: 'Shield Block' },
+            { id: 'mob.skeleton.say', name: 'Skeleton Rattle' },
+            { id: 'mob.slime.jump', name: 'Slime Jump' },
+            { id: 'random.toast', name: 'Toast (Quest Complete)' },
+            { id: 'mob.villager.haggle', name: 'Villager Hmm' },
+            { id: 'mob.villager.no', name: 'Villager No' },
+            { id: 'mob.villager.yes', name: 'Villager Yes' },
+            { id: 'mob.wanderingtrader.idle', name: 'Wandering Trader' },
+            { id: 'mob.witch.ambient', name: 'Witch Giggle' },
+            { id: 'mob.wither.spawn', name: 'Wither Spawn' },
+            { id: 'mob.wolf.bark', name: 'Wolf Bark' },
+            { id: 'mob.wolf.growl', name: 'Wolf Growl' },
+            { id: 'mob.zombie.say', name: 'Zombie Groan' }
+        ];
+
         const generateDefaultSkin = (colorHex) => {
           const canvas = document.createElement('canvas');
           canvas.width = 64; canvas.height = 64;
@@ -343,7 +494,7 @@
                 id: `edge_${Date.now()}`,
                 source: connectingFrom,
                 target: nodeId,
-                data: { label: 'Continue', commands: '' }
+                data: { label: 'Continue', giveItem: '', soundId: '', commands: '' }
               };
               setEdges(eds => [...eds, newEdge]);
               setSelectedEdge(newEdge);
@@ -368,7 +519,7 @@
                 id: `edge_${Date.now()}`,
                 source: connectingFrom,
                 target: newNodeId,
-                data: { label: 'Continue', commands: '' }
+                data: { label: 'Continue', giveItem: '', soundId: '', commands: '' }
               };
 
               setNodes(nds => [...nds, newNode]);
@@ -626,18 +777,29 @@
                       ];
                   }
 
-                  // REVERTED to stable Option C component structure
                   bpFolder.file(`entities/${fileName}.json`, JSON.stringify({
                     format_version: "1.20.0",
                     "minecraft:entity": {
                       description: { identifier: entityId, is_spawnable: true, is_summonable: true, is_experimental: false },
                       components: {
-                        "minecraft:npc": {},
                         "minecraft:collision_box": { "width": 0.6, "height": 1.9 },
-                        "minecraft:health": { "value": 20, "max": 20 },
+                        "minecraft:health": { "value": 1, "max": 1 },
                         "minecraft:physics": { "has_gravity": true, "has_collision": true },
                         "minecraft:pushable": { "is_pushable": false, "is_pushable_by_piston": false },
-                        "minecraft:damage_sensor": { "triggers": { "cause": "all", "deals_damage": false } },
+                        "minecraft:damage_sensor": {
+                          "triggers": [
+                            {
+                              "on_damage": {
+                                "filters": { "test": "has_ability", "subject": "other", "value": "worldbuilder" }
+                              },
+                              "deals_damage": true
+                            },
+                            {
+                              "cause": "all",
+                              "deals_damage": false
+                            }
+                          ]
+                        },
                         "minecraft:nameable": { "always_show": true, "allow_name_tags": true },
                         "minecraft:behavior.look_at_player": { "priority": 1, "look_distance": 8, "probability": 1.0 },
                         "minecraft:type_family": { "family": ["npc", "mob"] },
@@ -654,7 +816,30 @@
                           ]
                         }
                       },
+                      component_groups: {
+                        "forge:npc_init": {
+                          "minecraft:npc": {}
+                        },
+                        "forge:despawn_task": {
+                          "minecraft:instant_despawn": {}
+                        }
+                      },
                       events: {
+                        "minecraft:entity_spawned": {
+                          "sequence": [
+                            {
+                              "add": {
+                                "component_groups": ["forge:npc_init", "forge:despawn_task"]
+                              }
+                            },
+                            {
+                              "filters": { "test": "has_ability", "subject": "nearest_player", "value": "worldbuilder" },
+                              "remove": {
+                                "component_groups": ["forge:despawn_task"]
+                              }
+                            }
+                          ]
+                        },
                         [`${entityId}:start_dialogue`]: {
                           "queue_command": {
                             "command": interactionCommands
@@ -731,13 +916,18 @@
                   const buttons = outgoingEdges.map(e => {
                     const targetNode = nodes.find(n => n.id === e.target);
                     const targetActor = cast.find(c => c.id === targetNode.data.speakerId) || cast[0];
+                    
                     const customCommands = e.data.commands ? e.data.commands.split('\n').filter(cmd => cmd.trim() !== '') : [];
+                    const generatedCommands = [];
+                    if (e.data.giveItem) generatedCommands.push(`/give @p ${e.data.giveItem}`);
+                    if (e.data.soundId) generatedCommands.push(`/playsound ${e.data.soundId} @p`);
                     
                     return {
                       name: e.data.label || "Continue",
                       commands: [ 
                         `/event entity @e[type=forge:${safeName}_${targetActor.id},r=50,c=1] forge:play_talking`,
                         `/dialogue open @e[type=forge:${safeName}_${targetActor.id},r=50,c=1] @p ${safeName}_${targetNode.id}`, 
+                        ...generatedCommands,
                         ...customCommands 
                       ]
                     };
@@ -1147,9 +1337,24 @@
                         <label className="text-[10px] font-bold text-gray-400 uppercase">Button Label</label>
                         <input className="w-full bg-[#333] border border-[#444] rounded px-3 py-1.5 text-sm focus:border-yellow-500 outline-none transition-colors" placeholder="e.g. Continue..." value={activeEdge.data.label || ''} onChange={(e) => updateEdgeData(activeEdge.id, { label: e.target.value })} />
                       </div>
+                      
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase">Commands (Optional)</label>
-                        <textarea className="w-full bg-[#333] border border-[#444] rounded px-3 py-2 text-sm h-20 resize-none focus:border-yellow-500 outline-none transition-colors font-mono text-xs" placeholder="/give @p gold_ingot" value={activeEdge.data.commands || ''} onChange={(e) => updateEdgeData(activeEdge.id, { commands: e.target.value })} />
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">Give Item</label>
+                        <select className="w-full bg-[#333] border border-[#444] rounded px-3 py-1.5 text-sm focus:border-yellow-500 outline-none transition-colors text-white" value={activeEdge.data.giveItem || ''} onChange={(e) => updateEdgeData(activeEdge.id, { giveItem: e.target.value })}>
+                          {MINECRAFT_ITEMS.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                        </select>
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">Play Sound</label>
+                        <select className="w-full bg-[#333] border border-[#444] rounded px-3 py-1.5 text-sm focus:border-yellow-500 outline-none transition-colors text-white" value={activeEdge.data.soundId || ''} onChange={(e) => updateEdgeData(activeEdge.id, { soundId: e.target.value })}>
+                          {MINECRAFT_SOUNDS.map(sound => <option key={sound.id} value={sound.id}>{sound.name}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">Additional Commands</label>
+                        <textarea className="w-full bg-[#333] border border-[#444] rounded px-3 py-2 text-sm h-20 resize-none focus:border-yellow-500 outline-none transition-colors font-mono text-xs" placeholder="/time set day" value={activeEdge.data.commands || ''} onChange={(e) => updateEdgeData(activeEdge.id, { commands: e.target.value })} />
                       </div>
                       <button onClick={() => { setEdges(eds => eds.filter(e => e.id !== activeEdge.id)); setSelectedEdge(null); }} className="w-full flex items-center justify-center gap-2 mt-3 p-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded text-xs font-bold transition-all"><Trash2 size={14} /> Delete Connection</button>
                     </div>
