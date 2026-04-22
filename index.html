@@ -626,6 +626,7 @@
                       ];
                   }
 
+                  // REVERTED to stable Option C component structure
                   bpFolder.file(`entities/${fileName}.json`, JSON.stringify({
                     format_version: "1.20.0",
                     "minecraft:entity": {
@@ -1112,7 +1113,17 @@
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-gray-400 uppercase">Dialogue Text</label>
-                        <textarea className="w-full bg-[#333] border border-[#444] rounded px-3 py-2 text-sm h-28 resize-none focus:border-blue-500 outline-none transition-colors" value={activeNode.data.text || ''} onChange={(e) => updateNodeData(activeNode.id, { text: e.target.value })} />
+                        <textarea 
+                          className="w-full bg-[#333] border border-[#444] rounded px-3 py-2 text-sm h-28 resize-none focus:border-blue-500 outline-none transition-colors" 
+                          value={activeNode.data.text || ''} 
+                          onFocus={() => {
+                            if (activeNode.data.text === 'Click here to edit this starting dialogue.' || activeNode.data.text === 'Click to edit this new dialogue.') {
+                              updateNodeData(activeNode.id, { text: '' });
+                            }
+                          }}
+                          onChange={(e) => updateNodeData(activeNode.id, { text: e.target.value })} 
+                          placeholder="Type dialogue here..."
+                        />
                       </div>
                       <div className="space-y-3 mt-3 pt-3 border-t border-[#444]">
                         <label className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase cursor-pointer">
@@ -1125,7 +1136,9 @@
                           </div>
                         )}
                       </div>
-                      <button onClick={() => { setNodes(nds => nds.filter(n => n.id !== activeNode.id)); setEdges(eds => eds.filter(e => e.source !== activeNode.id && e.target !== activeNode.id)); setSelectedNode(null); }} className="w-full flex items-center justify-center gap-2 mt-3 p-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded text-xs font-bold transition-all"><Trash2 size={14} /> Delete Scene</button>
+                      {!activeNode.data.isStart && (
+                        <button onClick={() => { setNodes(nds => nds.filter(n => n.id !== activeNode.id)); setEdges(eds => eds.filter(e => e.source !== activeNode.id && e.target !== activeNode.id)); setSelectedNode(null); }} className="w-full flex items-center justify-center gap-2 mt-3 p-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded text-xs font-bold transition-all"><Trash2 size={14} /> Delete Scene</button>
+                      )}
                     </div>
                   ) : activeEdge ? (
                     <div className="space-y-4 animate-in fade-in duration-200">
