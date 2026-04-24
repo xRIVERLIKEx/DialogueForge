@@ -120,7 +120,7 @@
             { id: 'gunpowder', name: 'Gunpowder' },
             { id: 'iron_axe', name: 'Iron Axe' },
             { id: 'iron_boots', name: 'Iron Boots' },
-            { id: 'iron_chestplate', name: 'Iron Helmet' },
+            { id: 'iron_chestplate', name: 'Iron Chestplate' },
             { id: 'iron_helmet', name: 'Iron Helmet' },
             { id: 'iron_hoe', name: 'Iron Hoe' },
             { id: 'iron_ingot', name: 'Iron Ingot' },
@@ -650,60 +650,141 @@
 
           const autoLayout = () => {
             if (nodes.length === 0) return;
-            const children = {};
-            edges.forEach(e => {
-              if (!children[e.source]) children[e.source] = [];
-              children[e.source].push(e.target);
-            });
 
             const levels = {};
-            const visited = new Set();
-            const queue = [];
+            const inDegree = {};
+            nodes.forEach(n => { inDegree[n.id] = 0; });
+            edges.forEach(e => { if (inDegree[e.target] !== undefined) inDegree[e.target]++; });
 
-            const startNodes = nodes.filter(n => n.data.isStart);
-            const entryNodes = startNodes.length > 0 ? startNodes : [nodes[0]];
-            entryNodes.forEach(n => queue.push({ id: n.id, level: 0 }));
+            nodes.forEach(n => {
+                if (n.data.isStart || inDegree[n.id] === 0) {
+                    levels[n.id] = 0;
+                } else {
+                    levels[n.id] = -1;
+                }
+            });
 
-            while (queue.length > 0) {
-              const { id, level } = queue.shift();
-              if (!visited.has(id)) {
-                visited.add(id);
-                levels[id] = level;
-                const nodeChildren = children[id] || [];
-                nodeChildren.forEach(childId => queue.push({ id: childId, level: level + 1 }));
-              }
+            if (Object.values(levels).every(l => l === -1)) {
+                levels[nodes[0].id] = 0;
             }
 
-            let maxLevel = Math.max(...Object.values(levels), 0);
+            let changed = true;
+            let iterations = 0;
+            const MAX_ITER = nodes.length + 5;
+            while (changed && iterations < MAX_ITER) {
+                changed = false;
+                edges.forEach(e => {
+                    const u = e.source;
+                    const v = e.target;
+                    if (levels[u] !== -1) {
+                        if (levels[v] === -1 || levels[v] < levels[u] + 1) {
+                            levels[v] = levels[u] + 1;
+                            changed = true;
+                        }
+                    }
+                });
+                iterations++;
+            }
+
+            let maxFoundLevel = Math.max(...Object.values(levels).filter(l => l !== -1), 0);
             nodes.forEach(n => {
-              if (!visited.has(n.id)) { maxLevel++; levels[n.id] = maxLevel; }
+                if (levels[n.id] === -1) {
+                    levels[n.id] = maxFoundLevel + 1;
+                }
             });
 
-            const levelGroups = {};
+            const levelGroups = [];
+            let maxLevel = 0;
             nodes.forEach(n => {
-              const lvl = levels[n.id];
-              if (!levelGroups[lvl]) levelGroups[lvl] = [];
-              levelGroups[lvl].push(n);
+                const lvl = levels[n.id];
+                if (!levelGroups[lvl]) levelGroups[lvl] = [];
+                levelGroups[lvl].push(n);
+                if (lvl > maxLevel) maxLevel = lvl;
             });
+
+            for (let i = 0; i <= maxLevel; i++) {
+                if (!levelGroups[i]) levelGroups[i] = [];
+            }
 
             const NODE_WIDTH = 450; 
             const NODE_HEIGHT = 400;
 
+            const nodeX = {};
+            levelGroups.forEach(layer => {
+                layer.forEach((n, idx) => {
+                    nodeX[n.id] = idx * NODE_WIDTH; 
+                });
+            });
+
+            for (let iter = 0; iter < 50; iter++) {
+                for (let i = 0; i <= maxLevel; i++) {
+                    levelGroups[i].forEach(n => {
+                        const parents = edges.filter(e => e.target === n.id).map(e => nodeX[e.source]).filter(x => x !== undefined);
+                        const children = edges.filter(e => e.source === n.id).map(e => nodeX[e.target]).filter(x => x !== undefined);
+                        
+                        let targetX = nodeX[n.id];
+                        if (parents.length > 0 || children.length > 0) {
+                            const sum = [...parents, ...children].reduce((a,b)=>a+b, 0);
+                            targetX = sum / (parents.length + children.length);
+                        }
+                        nodeX[n.id] = nodeX[n.id] * 0.5 + targetX * 0.5; 
+                    });
+
+                    levelGroups[i].sort((a,b) => nodeX[a.id] - nodeX[b.id]);
+                    for (let j = 1; j < levelGroups[i].length; j++) {
+                        const leftNode = levelGroups[i][j-1];
+                        const rightNode = levelGroups[i][j];
+                        const diff = nodeX[rightNode.id] - nodeX[leftNode.id];
+                        if (diff < NODE_WIDTH) {
+                            const overlap = NODE_WIDTH - diff;
+                            nodeX[rightNode.id] += overlap / 2 + 5; 
+                            nodeX[leftNode.id] -= overlap / 2 + 5;
+                        }
+                    }
+                }
+            }
+
+            let minX = Infinity;
+            let maxX = -Infinity;
+            Object.values(nodeX).forEach(x => {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+            });
+            const graphCenter = (minX + maxX) / 2;
+
             const newNodes = nodes.map(node => {
               const lvl = levels[node.id];
-              const group = levelGroups[lvl];
-              const index = group.findIndex(n => n.id === node.id);
-              const totalWidth = group.length * NODE_WIDTH;
-              const startX = -(totalWidth / 2);
-
               return { 
                 ...node, 
-                position: { x: startX + (index * NODE_WIDTH), y: lvl * NODE_HEIGHT } 
+                position: { x: nodeX[node.id] - graphCenter, y: lvl * NODE_HEIGHT } 
               };
             });
 
             setNodes(newNodes);
             setTimeout(() => fitView(newNodes), 50);
+          };
+
+          const calculateEdgePath = (startX, startY, endX, endY, edgeId) => {
+              const yDiff = endY - startY;
+              const isLongJump = yDiff > 350;
+              
+              let ctrlOffsetX = 0;
+              if (isLongJump && Math.abs(startX - endX) < 150) {
+                  let hash = 0;
+                  for (let i = 0; i < edgeId.length; i++) hash += edgeId.charCodeAt(i);
+                  ctrlOffsetX = (hash % 2 === 0 ? 1 : -1) * 300;
+              }
+              
+              const c1X = startX + ctrlOffsetX;
+              const c1Y = startY + 80;
+              const c2X = endX + ctrlOffsetX;
+              const c2Y = endY - 80;
+              
+              const pathD = `M ${startX} ${startY} C ${c1X} ${c1Y}, ${c2X} ${c2Y}, ${endX} ${endY}`;
+              const midX = 0.125 * startX + 0.375 * c1X + 0.375 * c2X + 0.125 * endX;
+              const midY = 0.125 * startY + 0.375 * c1Y + 0.375 * c2Y + 0.125 * endY;
+
+              return { pathD, midX, midY };
           };
 
           const saveProject = () => {
@@ -1233,7 +1314,9 @@
                              
                              const isChainLink = sourceNode.data.isChangeScene || sourceNode.data.isActionbar;
                              const linkColor = sourceNode.data.isActionbar ? "#06b6d4" : "#8b5cf6";
-                             return <path key={`pdf_edge_${edge.id}`} d={`M ${startX} ${startY} C ${startX} ${startY + 80}, ${endX} ${endY - 80}, ${endX} ${endY}`} stroke={isChainLink ? linkColor : "#888"} strokeWidth={isChainLink ? "3" : "4"} strokeDasharray="none" fill="none" />;
+                             const { pathD } = calculateEdgePath(startX, startY, endX, endY, edge.id);
+                             
+                             return <path key={`pdf_edge_${edge.id}`} d={pathD} stroke={isChainLink ? linkColor : "#888"} strokeWidth={isChainLink ? "3" : "4"} strokeDasharray="none" fill="none" />;
                          })}
                       </svg>
 
@@ -1246,8 +1329,13 @@
                            const sEl = document.getElementById(`node_${sourceNode.id}`);
                            const sHeight = sEl ? sEl.offsetHeight : 144;
 
-                           const midX = ((sourceNode.position.x - minX + 128) + (targetNode.position.x - minX + 128)) / 2;
-                           const midY = ((sourceNode.position.y - minY + sHeight) + (targetNode.position.y - minY)) / 2;
+                           const startX = sourceNode.position.x - minX + 128;
+                           const startY = sourceNode.position.y - minY + sHeight;
+                           const endX = targetNode.position.x - minX + 128;
+                           const endY = targetNode.position.y - minY;
+                           
+                           const { midX, midY } = calculateEdgePath(startX, startY, endX, endY, edge.id);
+
                            return (
                               <div key={`pdf_label_${edge.id}`} className="absolute bg-white text-gray-800 px-3 py-1.5 rounded-md text-sm font-bold shadow-md border-2 border-gray-300" style={{ left: midX, top: midY, transform: 'translate(-50%, -50%)' }}>
                                   {edge.data.label || 'Continue'}
@@ -1473,10 +1561,11 @@
                              
                              const isChainLink = sourceNode.data.isChangeScene || sourceNode.data.isActionbar;
                              const linkColor = sourceNode.data.isActionbar ? "#06b6d4" : "#8b5cf6";
+                             const { pathD } = calculateEdgePath(startX, startY, endX, endY, edge.id);
                              
                              return (
                                <React.Fragment key={edge.id}>
-                                 <path d={`M ${startX} ${startY} C ${startX} ${startY + 80}, ${endX} ${endY - 80}, ${endX} ${endY}`} stroke={isSelected ? '#eab308' : (isChainLink ? linkColor : '#666')} strokeWidth={isSelected ? 4 : (isChainLink ? 3 : 2)} strokeDasharray="none" fill="none" className="pointer-events-auto cursor-pointer transition-all" onClick={(e) => { e.stopPropagation(); setSelectedEdge(edge); setSelectedNode(null); }} />
+                                 <path d={pathD} stroke={isSelected ? '#eab308' : (isChainLink ? linkColor : '#666')} strokeWidth={isSelected ? 4 : (isChainLink ? 3 : 2)} strokeDasharray="none" fill="none" className="pointer-events-auto cursor-pointer transition-all" onClick={(e) => { e.stopPropagation(); setSelectedEdge(edge); setSelectedNode(null); }} />
                                </React.Fragment>
                              );
                           })}
@@ -1511,8 +1600,8 @@
                              const startY = sourceNode.position.y + sHeight;
                              const endX = targetNode.position.x + 128;
                              const endY = targetNode.position.y;
-                             const midX = (startX + endX) / 2;
-                             const midY = (startY + endY) / 2;
+                             
+                             const { midX, midY } = calculateEdgePath(startX, startY, endX, endY, edge.id);
                              
                              return (
                                 <div key={`label_${edge.id}`} className={`absolute bg-[#222] text-white px-2 py-1 rounded text-[10px] font-bold shadow-lg border cursor-pointer pointer-events-auto transition-colors hover:border-yellow-400 ${selectedEdge?.id === edge.id ? 'border-yellow-500' : 'border-[#555]'}`} style={{ left: midX, top: midY, transform: 'translate(-50%, -50%)' }} onClick={(e) => { e.stopPropagation(); setSelectedEdge(edge); setSelectedNode(null); }}>
