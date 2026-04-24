@@ -57,6 +57,7 @@
         const Maximize = (p) => <Icon {...p} d={<><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></>} />;
         const Network = (p) => <Icon {...p} d={<><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/></>} />;
         const FileText = (p) => <Icon {...p} d={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></>} />;
+        const CodeIcon = (p) => <Icon {...p} d={<><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></>} />;
 
         const generateUUID = () => {
           return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -339,6 +340,7 @@
           const [packName, setPackName] = useState('');
           const [nameError, setNameError] = useState(false);
           const [isDraggingSkin, setIsDraggingSkin] = useState(false);
+          const [viewMode, setViewMode] = useState('nodes'); 
           
           const [cast, setCast] = useState([
             { id: 'char_1', name: 'My NPC', skinUrl: generateDefaultSkin(defaultColors[0]), eggBase: '#EAB308', eggOverlay: '#111111' }
@@ -526,7 +528,7 @@
               if (sourceNode?.data.isChangeScene) {
                   newNodeData = { isChangeScene: true, targetNodeId: '', silentUpdate: true };
               } else if (sourceNode?.data.isActionbar) {
-                  newNodeData = { isActionbar: true, actionbarText: '', targetPlayer: '@p', displaySlot: 'actionbar' };
+                  newNodeData = { isActionbar: true, actionbarText: '', targetPlayer: '@initiator', displaySlot: 'actionbar' };
               }
               
               const newNode = {
@@ -634,7 +636,7 @@
             } else if (type === 'change') {
               newNode.data = { isChangeScene: true, targetNodeId: '', silentUpdate: true };
             } else if (type === 'actionbar') {
-              newNode.data = { isActionbar: true, actionbarText: '', targetPlayer: '@p', displaySlot: 'actionbar' };
+              newNode.data = { isActionbar: true, actionbarText: '', targetPlayer: '@initiator', displaySlot: 'actionbar' };
             } else {
               newNode.data = { text: 'Click to edit this new dialogue.', speakerId: activeActorId, isStart: false, hasCloseButton: false, closeButtonLabel: 'Goodbye', despawnCast: false };
             }
@@ -747,6 +749,134 @@
                     }
                 }, 2000); 
             }, 600);
+          };
+
+          const generateDialogueScenesData = (safeName) => {
+              const getDespawnCommands = () => {
+                  const cmds = [];
+                  cast.forEach(a => {
+                      cmds.push(`/tp @e[type=forge:${safeName}_${a.id}] ~ ~-20 ~`);
+                      cmds.push(`/event entity @e[type=forge:${safeName}_${a.id}] forge:trigger_despawn`);
+                  });
+                  return cmds;
+              };
+
+              const actionbarNodes = nodes.filter(n => n.data.isActionbar && n.data.displaySlot !== 'title' && n.data.actionbarText && n.data.actionbarText.trim() !== '');
+              const allActionbarTags = actionbarNodes.map(n => `forge_ab_${n.id}`);
+
+              return nodes.filter(n => !n.data.isChangeScene && !n.data.isActionbar).map(node => {
+                const currentActor = cast.find(c => c.id === node.data.speakerId) || cast[0];
+                const outgoingEdges = edges.filter(e => e.source === node.id);
+                
+                const buttons = outgoingEdges.map(e => {
+                  let currentNode = nodes.find(n => n.id === e.target);
+                  let safetyVisited = new Set();
+                  let actionCommands = [];
+                  let finalUiNode = null;
+                  let activeNpcId = currentActor.id;
+
+                  while (currentNode) {
+                      if (safetyVisited.has(currentNode.id)) break;
+                      safetyVisited.add(currentNode.id);
+
+                      if (currentNode.data.isChangeScene) {
+                          const targetStartId = currentNode.data.targetNodeId;
+                          if (targetStartId) {
+                              const tsNode = nodes.find(n => n.id === targetStartId);
+                              if (tsNode) {
+                                  const tActor = cast.find(c => c.id === tsNode.data.speakerId) || cast[0];
+                                  activeNpcId = tActor.id; 
+                                  if (currentNode.data.silentUpdate) {
+                                      actionCommands.push(`/dialogue change @e[type=forge:${safeName}_${tActor.id}] ${safeName}_${targetStartId}`);
+                                  } else {
+                                      actionCommands.push(`/dialogue change @e[type=forge:${safeName}_${tActor.id},r=50,c=1] ${safeName}_${targetStartId} @initiator`);
+                                  }
+                              }
+                          }
+                          const nextEdge = edges.find(edge => edge.source === currentNode.id);
+                          currentNode = nextEdge ? nodes.find(n => n.id === nextEdge.target) : null;
+                      } else if (currentNode.data.isActionbar) {
+                          const text = currentNode.data.actionbarText;
+                          const subtitle = currentNode.data.subtitleText;
+                          const target = currentNode.data.targetPlayer || '@initiator';
+                          const displaySlot = currentNode.data.displaySlot || 'actionbar';
+
+                          if (displaySlot === 'title') {
+                              if (text && text.trim() !== '') {
+                                  if (subtitle && subtitle.trim() !== '') {
+                                      actionCommands.push(`/title ${target} subtitle ${subtitle.trim()}`);
+                                  }
+                                  actionCommands.push(`/title ${target} title ${text.trim()}`);
+                              } else {
+                                  actionCommands.push(`/title ${target} clear`);
+                              }
+                          } else {
+                              allActionbarTags.forEach(tag => {
+                                  actionCommands.push(`/tag ${target} remove ${tag}`);
+                              });
+
+                              if (text && text.trim() !== '') {
+                                  actionCommands.push(`/tag ${target} add forge_ab_${currentNode.id}`);
+                              } else {
+                                  actionCommands.push(`/titleraw ${target} actionbar {"rawtext":[{"text":""}]}`);
+                              }
+                          }
+                          const nextEdge = edges.find(edge => edge.source === currentNode.id);
+                          currentNode = nextEdge ? nodes.find(n => n.id === nextEdge.target) : null;
+                      } else {
+                          finalUiNode = currentNode;
+                          break;
+                      }
+                  }
+
+                  const customCommands = e.data.commands ? e.data.commands.split('\n').filter(cmd => cmd.trim() !== '') : [];
+                  const generatedCommands = [];
+                  if (e.data.giveItem) generatedCommands.push(`/give @initiator ${e.data.giveItem}`);
+                  if (e.data.soundId) generatedCommands.push(`/playsound ${e.data.soundId} @initiator`);
+                  
+                  let finalCommands = [];
+                  if (e.data.despawnCast) {
+                      finalCommands = [
+                          ...generatedCommands,
+                          ...customCommands,
+                          ...actionCommands,
+                          ...getDespawnCommands()
+                      ];
+                  } else {
+                      finalCommands = [ ...actionCommands ];
+                      
+                      if (finalUiNode) {
+                          const targetActor = cast.find(c => c.id === finalUiNode.data.speakerId) || cast[0];
+                          finalCommands.push(`/event entity @e[type=forge:${safeName}_${targetActor.id},r=50,c=1] forge:play_talking`);
+                          finalCommands.push(`/dialogue open @e[type=forge:${safeName}_${targetActor.id},r=50,c=1] @initiator ${safeName}_${finalUiNode.id}`);
+                      }
+                      
+                      finalCommands.push(...generatedCommands, ...customCommands);
+                  }
+
+                  return {
+                    name: e.data.label || "Continue",
+                    commands: finalCommands.length > 0 ? finalCommands : ["/say Continuing..."]
+                  };
+                });
+
+                if (node.data.hasCloseButton || outgoingEdges.length === 0) {
+                  const closeBtn = {
+                      name: node.data.closeButtonLabel || "Goodbye"
+                  };
+                  if (node.data.despawnCast) {
+                      closeBtn.commands = getDespawnCommands();
+                  }
+                  buttons.push(closeBtn);
+                }
+
+                return {
+                  scene_tag: `${safeName}_${node.id}`,
+                  npc_name: currentActor.name,
+                  text: node.data.text,
+                  buttons: buttons.length > 0 ? buttons : undefined
+                };
+              });
           };
 
           const exportAddon = async () => {
@@ -947,128 +1077,7 @@
 
                 rpFolder.file("texts/en_US.lang", langFileStr);
 
-                const getDespawnCommands = () => {
-                    const cmds = [];
-                    cast.forEach(a => {
-                        cmds.push(`/tp @e[type=forge:${safeName}_${a.id}] ~ ~-20 ~`);
-                        cmds.push(`/event entity @e[type=forge:${safeName}_${a.id}] forge:trigger_despawn`);
-                    });
-                    return cmds;
-                };
-
-                const dialogueScenes = nodes.filter(n => !n.data.isChangeScene && !n.data.isActionbar).map(node => {
-                  const currentActor = cast.find(c => c.id === node.data.speakerId) || cast[0];
-                  const outgoingEdges = edges.filter(e => e.source === node.id);
-                  
-                  const buttons = outgoingEdges.map(e => {
-                    let currentNode = nodes.find(n => n.id === e.target);
-                    let safetyVisited = new Set();
-                    let actionCommands = [];
-                    let finalUiNode = null;
-                    let activeNpcId = currentActor.id;
-
-                    while (currentNode) {
-                        if (safetyVisited.has(currentNode.id)) break;
-                        safetyVisited.add(currentNode.id);
-
-                        if (currentNode.data.isChangeScene) {
-                            const targetStartId = currentNode.data.targetNodeId;
-                            if (targetStartId) {
-                                const tsNode = nodes.find(n => n.id === targetStartId);
-                                if (tsNode) {
-                                    const tActor = cast.find(c => c.id === tsNode.data.speakerId) || cast[0];
-                                    activeNpcId = tActor.id; 
-                                    if (currentNode.data.silentUpdate) {
-                                        actionCommands.push(`/dialogue change @e[type=forge:${safeName}_${tActor.id}] ${safeName}_${targetStartId}`);
-                                    } else {
-                                        actionCommands.push(`/dialogue change @e[type=forge:${safeName}_${tActor.id},r=50,c=1] ${safeName}_${targetStartId} @p`);
-                                    }
-                                }
-                            }
-                            const nextEdge = edges.find(edge => edge.source === currentNode.id);
-                            currentNode = nextEdge ? nodes.find(n => n.id === nextEdge.target) : null;
-                        } else if (currentNode.data.isActionbar) {
-                            const text = currentNode.data.actionbarText;
-                            const subtitle = currentNode.data.subtitleText;
-                            const target = currentNode.data.targetPlayer || '@p';
-                            const displaySlot = currentNode.data.displaySlot || 'actionbar';
-
-                            if (displaySlot === 'title') {
-                                if (text && text.trim() !== '') {
-                                    if (subtitle && subtitle.trim() !== '') {
-                                        actionCommands.push(`/title ${target} subtitle ${subtitle.trim()}`);
-                                    }
-                                    actionCommands.push(`/title ${target} title ${text.trim()}`);
-                                } else {
-                                    actionCommands.push(`/title ${target} clear`);
-                                }
-                            } else {
-                                allActionbarTags.forEach(tag => {
-                                    actionCommands.push(`/tag ${target} remove ${tag}`);
-                                });
-
-                                if (text && text.trim() !== '') {
-                                    actionCommands.push(`/tag ${target} add forge_ab_${currentNode.id}`);
-                                } else {
-                                    actionCommands.push(`/titleraw ${target} actionbar {"rawtext":[{"text":""}]}`);
-                                }
-                            }
-                            const nextEdge = edges.find(edge => edge.source === currentNode.id);
-                            currentNode = nextEdge ? nodes.find(n => n.id === nextEdge.target) : null;
-                        } else {
-                            finalUiNode = currentNode;
-                            break;
-                        }
-                    }
-
-                    const customCommands = e.data.commands ? e.data.commands.split('\n').filter(cmd => cmd.trim() !== '') : [];
-                    const generatedCommands = [];
-                    if (e.data.giveItem) generatedCommands.push(`/give @p ${e.data.giveItem}`);
-                    if (e.data.soundId) generatedCommands.push(`/playsound ${e.data.soundId} @p`);
-                    
-                    let finalCommands = [];
-                    if (e.data.despawnCast) {
-                        finalCommands = [
-                            ...generatedCommands,
-                            ...customCommands,
-                            ...actionCommands,
-                            ...getDespawnCommands()
-                        ];
-                    } else {
-                        finalCommands = [ ...actionCommands ];
-                        
-                        if (finalUiNode) {
-                            const targetActor = cast.find(c => c.id === finalUiNode.data.speakerId) || cast[0];
-                            finalCommands.push(`/event entity @e[type=forge:${safeName}_${targetActor.id},r=50,c=1] forge:play_talking`);
-                            finalCommands.push(`/dialogue open @e[type=forge:${safeName}_${targetActor.id},r=50,c=1] @p ${safeName}_${finalUiNode.id}`);
-                        }
-                        
-                        finalCommands.push(...generatedCommands, ...customCommands);
-                    }
-
-                    return {
-                      name: e.data.label || "Continue",
-                      commands: finalCommands.length > 0 ? finalCommands : ["/say Continuing..."]
-                    };
-                  });
-
-                  if (node.data.hasCloseButton || outgoingEdges.length === 0) {
-                    const closeBtn = {
-                        name: node.data.closeButtonLabel || "Goodbye"
-                    };
-                    if (node.data.despawnCast) {
-                        closeBtn.commands = getDespawnCommands();
-                    }
-                    buttons.push(closeBtn);
-                  }
-
-                  return {
-                    scene_tag: `${safeName}_${node.id}`,
-                    npc_name: currentActor.name,
-                    text: node.data.text,
-                    buttons: buttons.length > 0 ? buttons : undefined
-                  };
-                });
+                const dialogueScenes = generateDialogueScenesData(safeName);
 
                 bpFolder.file(`dialogue/scenes.json`, JSON.stringify({
                   format_version: "1.17",
@@ -1235,7 +1244,7 @@
                                       <div className="p-4 flex flex-col gap-3">
                                           <div className="flex justify-between items-end mb-1">
                                               <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">{node.data.displaySlot === 'title' ? 'Title:' : 'Actionbar:'}</div>
-                                              <div className="text-[9px] text-cyan-500 font-bold uppercase bg-[#0f172a] px-1.5 py-0.5 rounded border border-[#151515]">{node.data.targetPlayer || '@p'}</div>
+                                              <div className="text-[9px] text-cyan-500 font-bold uppercase bg-[#0f172a] px-1.5 py-0.5 rounded border border-[#151515]">{node.data.targetPlayer || '@initiator'}</div>
                                           </div>
                                           <div className="bg-[#0f172a] px-3 py-2 text-white border-2 border-[#151515] rounded-md shadow-inner text-sm font-bold text-center truncate italic">
                                               {node.data.actionbarText ? `"${node.data.actionbarText}"` : "CLEAR TEXT"}
@@ -1380,195 +1389,221 @@
               <main 
                 ref={canvasContainerRef}
                 className="flex-1 relative bg-[#1e1e1e] overflow-hidden select-none"
-                style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
-                onMouseDown={handleCanvasMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-                onWheel={handleWheel}
+                style={{ cursor: isPanning && viewMode === 'nodes' ? 'grabbing' : (viewMode === 'nodes' ? 'grab' : 'default') }}
+                onMouseDown={(e) => { if(viewMode === 'nodes') handleCanvasMouseDown(e) }}
+                onMouseMove={(e) => { if(viewMode === 'nodes') handleMouseMove(e) }}
+                onMouseUp={(e) => { if(viewMode === 'nodes') handleMouseUp(e) }}
+                onMouseLeave={(e) => { if(viewMode === 'nodes') handleMouseUp(e) }}
+                onWheel={(e) => { if(viewMode === 'nodes') handleWheel(e) }}
               >
-                <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0', width: '100%', height: '100%', position: 'absolute' }}>
-                    <div className="absolute pointer-events-none" style={{ backgroundImage: 'radial-gradient(#333 1px, transparent 1px)', backgroundSize: '20px 20px', left: -5000, top: -5000, right: -5000, bottom: -5000 }} />
-                    <svg className="absolute pointer-events-none z-0" style={{ overflow: 'visible' }}>
-                      {edges.map(edge => {
-                         const sourceNode = nodes.find(n => n.id === edge.source);
-                         const targetNode = nodes.find(n => n.id === edge.target);
-                         if (!sourceNode || !targetNode) return null;
-                         
-                         const sEl = document.getElementById(`node_${sourceNode.id}`);
-                         const sHeight = sEl ? sEl.offsetHeight : 144;
+                {viewMode === 'nodes' ? (
+                  <>
+                    <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0', width: '100%', height: '100%', position: 'absolute' }}>
+                        <div className="absolute pointer-events-none" style={{ backgroundImage: 'radial-gradient(#333 1px, transparent 1px)', backgroundSize: '20px 20px', left: -5000, top: -5000, right: -5000, bottom: -5000 }} />
+                        <svg className="absolute pointer-events-none z-0" style={{ overflow: 'visible' }}>
+                          {edges.map(edge => {
+                             const sourceNode = nodes.find(n => n.id === edge.source);
+                             const targetNode = nodes.find(n => n.id === edge.target);
+                             if (!sourceNode || !targetNode) return null;
+                             
+                             const sEl = document.getElementById(`node_${sourceNode.id}`);
+                             const sHeight = sEl ? sEl.offsetHeight : 144;
 
-                         const startX = sourceNode.position.x + 128;
-                         const startY = sourceNode.position.y + sHeight;
-                         const endX = targetNode.position.x + 128;
-                         const endY = targetNode.position.y;
-                         const isSelected = selectedEdge?.id === edge.id;
-                         
-                         const isChainLink = sourceNode.data.isChangeScene || sourceNode.data.isActionbar;
-                         const linkColor = sourceNode.data.isActionbar ? "#06b6d4" : "#8b5cf6";
-                         
-                         return (
-                           <React.Fragment key={edge.id}>
-                             <path d={`M ${startX} ${startY} C ${startX} ${startY + 80}, ${endX} ${endY - 80}, ${endX} ${endY}`} stroke={isSelected ? '#eab308' : (isChainLink ? linkColor : '#666')} strokeWidth={isSelected ? 4 : (isChainLink ? 3 : 2)} strokeDasharray="none" fill="none" className="pointer-events-auto cursor-pointer transition-all" onClick={(e) => { e.stopPropagation(); setSelectedEdge(edge); setSelectedNode(null); }} />
-                           </React.Fragment>
-                         );
-                      })}
-                      
-                      {connectingFrom && (() => {
-                         const cNode = nodes.find(n => n.id === connectingFrom);
-                         if (!cNode) return null;
-                         const cEl = document.getElementById(`node_${connectingFrom}`);
-                         const cHeight = cEl ? cEl.offsetHeight : 144;
-                         const startX = cNode.position.x + 128;
-                         const startY = cNode.position.y + cHeight;
-                         
-                         const isChainLink = cNode.data.isChangeScene || cNode.data.isActionbar;
-                         const linkColor = cNode.data.isActionbar ? "#06b6d4" : "#8b5cf6";
-                         
-                         return (
-                            <path d={`M ${startX} ${startY} C ${startX} ${startY + 80}, ${mousePos.x}, ${mousePos.y - 50}, ${mousePos.x} ${mousePos.y}`} stroke={isChainLink ? linkColor : "#eab308"} strokeWidth={3} strokeDasharray={isChainLink ? "6,6" : "5,5"} fill="none" />
-                         );
-                      })()}
-                    </svg>
+                             const startX = sourceNode.position.x + 128;
+                             const startY = sourceNode.position.y + sHeight;
+                             const endX = targetNode.position.x + 128;
+                             const endY = targetNode.position.y;
+                             const isSelected = selectedEdge?.id === edge.id;
+                             
+                             const isChainLink = sourceNode.data.isChangeScene || sourceNode.data.isActionbar;
+                             const linkColor = sourceNode.data.isActionbar ? "#06b6d4" : "#8b5cf6";
+                             
+                             return (
+                               <React.Fragment key={edge.id}>
+                                 <path d={`M ${startX} ${startY} C ${startX} ${startY + 80}, ${endX} ${endY - 80}, ${endX} ${endY}`} stroke={isSelected ? '#eab308' : (isChainLink ? linkColor : '#666')} strokeWidth={isSelected ? 4 : (isChainLink ? 3 : 2)} strokeDasharray="none" fill="none" className="pointer-events-auto cursor-pointer transition-all" onClick={(e) => { e.stopPropagation(); setSelectedEdge(edge); setSelectedNode(null); }} />
+                               </React.Fragment>
+                             );
+                          })}
+                          
+                          {connectingFrom && (() => {
+                             const cNode = nodes.find(n => n.id === connectingFrom);
+                             if (!cNode) return null;
+                             const cEl = document.getElementById(`node_${connectingFrom}`);
+                             const cHeight = cEl ? cEl.offsetHeight : 144;
+                             const startX = cNode.position.x + 128;
+                             const startY = cNode.position.y + cHeight;
+                             
+                             const isChainLink = cNode.data.isChangeScene || cNode.data.isActionbar;
+                             const linkColor = cNode.data.isActionbar ? "#06b6d4" : "#8b5cf6";
+                             
+                             return (
+                                <path d={`M ${startX} ${startY} C ${startX} ${startY + 80}, ${mousePos.x}, ${mousePos.y - 50}, ${mousePos.x} ${mousePos.y}`} stroke={isChainLink ? linkColor : "#eab308"} strokeWidth={3} strokeDasharray={isChainLink ? "6,6" : "5,5"} fill="none" />
+                             );
+                          })()}
+                        </svg>
 
-                    <div className="absolute inset-0 pointer-events-none z-10" style={{ overflow: "visible" }}>
-                        {edges.map(edge => {
-                         const sourceNode = nodes.find(n => n.id === edge.source);
-                         const targetNode = nodes.find(n => n.id === edge.target);
-                         if (!sourceNode || !targetNode || sourceNode.data.isChangeScene || sourceNode.data.isActionbar) return null;
-                         
-                         const sEl = document.getElementById(`node_${sourceNode.id}`);
-                         const sHeight = sEl ? sEl.offsetHeight : 144;
+                        <div className="absolute inset-0 pointer-events-none z-10" style={{ overflow: "visible" }}>
+                            {edges.map(edge => {
+                             const sourceNode = nodes.find(n => n.id === edge.source);
+                             const targetNode = nodes.find(n => n.id === edge.target);
+                             if (!sourceNode || !targetNode || sourceNode.data.isChangeScene || sourceNode.data.isActionbar) return null;
+                             
+                             const sEl = document.getElementById(`node_${sourceNode.id}`);
+                             const sHeight = sEl ? sEl.offsetHeight : 144;
 
-                         const startX = sourceNode.position.x + 128;
-                         const startY = sourceNode.position.y + sHeight;
-                         const endX = targetNode.position.x + 128;
-                         const endY = targetNode.position.y;
-                         const midX = (startX + endX) / 2;
-                         const midY = (startY + endY) / 2;
-                         
-                         return (
-                            <div key={`label_${edge.id}`} className={`absolute bg-[#222] text-white px-2 py-1 rounded text-[10px] font-bold shadow-lg border cursor-pointer pointer-events-auto transition-colors hover:border-yellow-400 ${selectedEdge?.id === edge.id ? 'border-yellow-500' : 'border-[#555]'}`} style={{ left: midX, top: midY, transform: 'translate(-50%, -50%)' }} onClick={(e) => { e.stopPropagation(); setSelectedEdge(edge); setSelectedNode(null); }}>
-                                {edge.data.label || 'Continue'}
+                             const startX = sourceNode.position.x + 128;
+                             const startY = sourceNode.position.y + sHeight;
+                             const endX = targetNode.position.x + 128;
+                             const endY = targetNode.position.y;
+                             const midX = (startX + endX) / 2;
+                             const midY = (startY + endY) / 2;
+                             
+                             return (
+                                <div key={`label_${edge.id}`} className={`absolute bg-[#222] text-white px-2 py-1 rounded text-[10px] font-bold shadow-lg border cursor-pointer pointer-events-auto transition-colors hover:border-yellow-400 ${selectedEdge?.id === edge.id ? 'border-yellow-500' : 'border-[#555]'}`} style={{ left: midX, top: midY, transform: 'translate(-50%, -50%)' }} onClick={(e) => { e.stopPropagation(); setSelectedEdge(edge); setSelectedNode(null); }}>
+                                    {edge.data.label || 'Continue'}
+                                </div>
+                             )
+                            })}
+                        </div>
+
+                        {nodes.map(node => {
+                            if (node.data.isChangeScene) {
+                                return (
+                                    <div key={node.id} id={`node_${node.id}`} className={`absolute w-64 p-0 rounded-md border-2 shadow-2xl transition-transform cursor-move bg-[#2d1b4e] ${selectedNode?.id === node.id ? 'border-purple-400 z-30' : 'border-[#4c1d95] z-20'} ${draggingNode === node.id ? 'opacity-90' : 'opacity-100'}`} style={{ left: node.position.x, top: node.position.y }} onMouseDown={(e) => handleNodeMouseDown(e, node)} onClick={(e) => e.stopPropagation()}>
+                                        <div className="bg-[#1e1e1e] p-2 flex items-center justify-between border-b-2 border-[#151515]">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-3 h-3 rounded-full border border-black shadow-inner bg-purple-500" />
+                                                <span className="text-gray-300 text-xs font-bold uppercase tracking-wider">Change Scene</span>
+                                            </div>
+                                            <span className="text-[10px] text-gray-500 font-mono">{node.id.substring(5,9)}</span>
+                                        </div>
+                                        <div className="p-3 flex flex-col gap-2 pointer-events-none">
+                                            <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Jumps to:</div>
+                                            <div className="bg-[#1a1033] px-2 py-1.5 text-white border border-[#151515] rounded shadow-inner text-xs font-semibold truncate flex justify-between items-center pointer-events-auto">
+                                                <select 
+                                                    className="w-full bg-transparent outline-none cursor-pointer text-white"
+                                                    value={node.data.targetNodeId || ''}
+                                                    onChange={(e) => updateNodeData(node.id, { targetNodeId: e.target.value })}
+                                                >
+                                                    <option value="">-- Select Start Scene --</option>
+                                                    {nodes.filter(n => n.data.isStart).map(n => {
+                                                        const actor = cast.find(c => c.id === n.data.speakerId) || cast[0];
+                                                        return <option key={n.id} value={n.id} className="text-black">{n.data.sceneName || 'Start'} - {actor.name} ({n.id.substring(6,10)})</option>
+                                                    })}
+                                                </select>
+                                            </div>
+                                            <div className="text-[9px] text-purple-300 font-bold uppercase mt-1">
+                                                {node.data.silentUpdate ? "Silent Update" : "Moves Player UI"}
+                                            </div>
+                                        </div>
+                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-gray-400 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-gray-200 transition-colors z-40 pointer-events-auto" onMouseUp={(e) => handleTargetMouseUp(e, node.id)} />
+                                        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-yellow-500 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-yellow-400 transition-colors z-40 pointer-events-auto" onMouseDown={(e) => handleSourceMouseDown(e, node.id)} />
+                                    </div>
+                                );
+                            } else if (node.data.isActionbar) {
+                                return (
+                                    <div key={node.id} id={`node_${node.id}`} className={`absolute w-64 p-0 rounded-md border-2 shadow-2xl transition-transform cursor-move bg-[#083344] ${selectedNode?.id === node.id ? 'border-cyan-400 z-30' : 'border-[#0891b2] z-20'} ${draggingNode === node.id ? 'opacity-90' : 'opacity-100'}`} style={{ left: node.position.x, top: node.position.y }} onMouseDown={(e) => handleNodeMouseDown(e, node)} onClick={(e) => e.stopPropagation()}>
+                                        <div className="bg-[#1e1e1e] p-2 flex items-center justify-between border-b-2 border-[#151515]">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-3 h-3 rounded-full border border-black shadow-inner bg-cyan-500" />
+                                                <span className="text-gray-300 text-xs font-bold uppercase tracking-wider">Screen Text</span>
+                                            </div>
+                                            <span className="text-[10px] text-gray-500 font-mono">{node.id.substring(6,10)}</span>
+                                        </div>
+                                        <div className="p-3 flex flex-col gap-2 pointer-events-none">
+                                            <div className="flex justify-between items-end mb-1">
+                                                <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">{node.data.displaySlot === 'title' ? 'Title:' : 'Actionbar:'}</div>
+                                                <div className="text-[9px] text-cyan-500 font-bold uppercase bg-[#0f172a] px-1.5 py-0.5 rounded border border-[#151515]">{node.data.targetPlayer || '@initiator'}</div>
+                                            </div>
+                                            <div className="bg-[#0f172a] px-2 py-1.5 text-white border border-[#151515] rounded shadow-inner text-xs italic truncate">
+                                                {node.data.actionbarText ? `"${node.data.actionbarText}"` : "CLEAR TEXT"}
+                                            </div>
+                                            {node.data.displaySlot === 'title' && node.data.subtitleText && (
+                                                <div className="bg-[#0f172a] px-2 py-1 text-gray-300 border border-[#151515] rounded shadow-inner text-[10px] italic truncate mt-0.5">
+                                                    Sub: "{node.data.subtitleText}"
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-gray-400 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-gray-200 transition-colors z-40 pointer-events-auto" onMouseUp={(e) => handleTargetMouseUp(e, node.id)} />
+                                        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-yellow-500 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-yellow-400 transition-colors z-40 pointer-events-auto" onMouseDown={(e) => handleSourceMouseDown(e, node.id)} />
+                                    </div>
+                                );
+                            }
+
+                            const nodeActor = cast.find(c => c.id === node.data.speakerId) || cast[0];
+                            return (
+                            <div key={node.id} id={`node_${node.id}`} className={`absolute w-64 p-0 rounded-md border-2 shadow-2xl transition-transform cursor-move bg-[#2c2c2c] ${selectedNode?.id === node.id ? 'border-blue-400 z-30' : 'border-[#4a4a4a] z-20'} ${draggingNode === node.id ? 'opacity-90' : 'opacity-100'}`} style={{ left: node.position.x, top: node.position.y }} onMouseDown={(e) => handleNodeMouseDown(e, node)} onClick={(e) => e.stopPropagation()}>
+                                <div className="bg-[#1e1e1e] p-2 flex items-center justify-between border-b-2 border-[#151515]">
+                                    <div className="flex items-center gap-2">
+                                        <div className={`w-3 h-3 rounded-full border border-black shadow-inner ${node.data.isStart ? 'bg-green-500' : 'bg-blue-500'}`} />
+                                        <span className="text-gray-300 text-xs font-bold uppercase tracking-wider">{node.data.isStart ? (node.data.sceneName || 'Start Scene') : 'Scene'}</span>
+                                    </div>
+                                    <span className="text-[10px] text-gray-500 font-mono">{node.id.substring(6,10)}</span>
+                                </div>
+                                <div className="p-3 flex flex-col gap-2 pointer-events-none">
+                                    <div className="flex flex-col">
+                                        <div className="bg-[#3c3c3c] px-2 py-1 text-white border border-[#151515] rounded shadow-inner text-xs font-semibold truncate flex justify-between items-center">
+                                            <span>{nodeActor.name}</span>
+                                            <div className="w-2 h-2 rounded-full shadow-sm" style={{backgroundColor: nodeActor.eggBase}} />
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <div className="bg-[#3c3c3c] px-2 pt-1 pb-1.5 text-gray-200 border border-[#151515] rounded shadow-inner text-xs italic whitespace-pre-wrap">
+                                            "{node.data.text}"
+                                        </div>
+                                    </div>
+                                </div>
+                                {!node.data.isStart && <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-gray-400 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-gray-200 transition-colors z-40 pointer-events-auto" onMouseUp={(e) => handleTargetMouseUp(e, node.id)} />}
+                                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-yellow-500 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-yellow-400 transition-colors z-40 pointer-events-auto" onMouseDown={(e) => handleSourceMouseDown(e, node.id)} />
                             </div>
-                         )
-                        })}
+                        )})}
                     </div>
 
-                    {nodes.map(node => {
-                        if (node.data.isChangeScene) {
-                            return (
-                                <div key={node.id} id={`node_${node.id}`} className={`absolute w-64 p-0 rounded-md border-2 shadow-2xl transition-transform cursor-move bg-[#2d1b4e] ${selectedNode?.id === node.id ? 'border-purple-400 z-30' : 'border-[#4c1d95] z-20'} ${draggingNode === node.id ? 'opacity-90' : 'opacity-100'}`} style={{ left: node.position.x, top: node.position.y }} onMouseDown={(e) => handleNodeMouseDown(e, node)} onClick={(e) => e.stopPropagation()}>
-                                    <div className="bg-[#1e1e1e] p-2 flex items-center justify-between border-b-2 border-[#151515]">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-3 h-3 rounded-full border border-black shadow-inner bg-purple-500" />
-                                            <span className="text-gray-300 text-xs font-bold uppercase tracking-wider">Change Scene</span>
-                                        </div>
-                                        <span className="text-[10px] text-gray-500 font-mono">{node.id.substring(5,9)}</span>
-                                    </div>
-                                    <div className="p-3 flex flex-col gap-2 pointer-events-none">
-                                        <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Jumps to:</div>
-                                        <div className="bg-[#1a1033] px-2 py-1.5 text-white border border-[#151515] rounded shadow-inner text-xs font-semibold truncate flex justify-between items-center pointer-events-auto">
-                                            <select 
-                                                className="w-full bg-transparent outline-none cursor-pointer text-white"
-                                                value={node.data.targetNodeId || ''}
-                                                onChange={(e) => updateNodeData(node.id, { targetNodeId: e.target.value })}
-                                            >
-                                                <option value="">-- Select Start Scene --</option>
-                                                {nodes.filter(n => n.data.isStart).map(n => {
-                                                    const actor = cast.find(c => c.id === n.data.speakerId) || cast[0];
-                                                    return <option key={n.id} value={n.id} className="text-black">{n.data.sceneName || 'Start'} - {actor.name} ({n.id.substring(6,10)})</option>
-                                                })}
-                                            </select>
-                                        </div>
-                                        <div className="text-[9px] text-purple-300 font-bold uppercase mt-1">
-                                            {node.data.silentUpdate ? "Silent Update" : "Moves Player UI"}
-                                        </div>
-                                    </div>
-                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-gray-400 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-gray-200 transition-colors z-40 pointer-events-auto" onMouseUp={(e) => handleTargetMouseUp(e, node.id)} />
-                                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-yellow-500 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-yellow-400 transition-colors z-40 pointer-events-auto" onMouseDown={(e) => handleSourceMouseDown(e, node.id)} />
-                                </div>
-                            );
-                        } else if (node.data.isActionbar) {
-                            return (
-                                <div key={node.id} id={`node_${node.id}`} className={`absolute w-64 p-0 rounded-md border-2 shadow-2xl transition-transform cursor-move bg-[#083344] ${selectedNode?.id === node.id ? 'border-cyan-400 z-30' : 'border-[#0891b2] z-20'} ${draggingNode === node.id ? 'opacity-90' : 'opacity-100'}`} style={{ left: node.position.x, top: node.position.y }} onMouseDown={(e) => handleNodeMouseDown(e, node)} onClick={(e) => e.stopPropagation()}>
-                                    <div className="bg-[#1e1e1e] p-2 flex items-center justify-between border-b-2 border-[#151515]">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-3 h-3 rounded-full border border-black shadow-inner bg-cyan-500" />
-                                            <span className="text-gray-300 text-xs font-bold uppercase tracking-wider">Screen Text</span>
-                                        </div>
-                                        <span className="text-[10px] text-gray-500 font-mono">{node.id.substring(6,10)}</span>
-                                    </div>
-                                    <div className="p-3 flex flex-col gap-2 pointer-events-none">
-                                        <div className="flex justify-between items-end mb-1">
-                                            <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">{node.data.displaySlot === 'title' ? 'Title:' : 'Actionbar:'}</div>
-                                            <div className="text-[9px] text-cyan-500 font-bold uppercase bg-[#0f172a] px-1.5 py-0.5 rounded border border-[#151515]">{node.data.targetPlayer || '@p'}</div>
-                                        </div>
-                                        <div className="bg-[#0f172a] px-2 py-1.5 text-white border border-[#151515] rounded shadow-inner text-xs italic truncate">
-                                            {node.data.actionbarText ? `"${node.data.actionbarText}"` : "CLEAR TEXT"}
-                                        </div>
-                                        {node.data.displaySlot === 'title' && node.data.subtitleText && (
-                                            <div className="bg-[#0f172a] px-2 py-1 text-gray-300 border border-[#151515] rounded shadow-inner text-[10px] italic truncate mt-0.5">
-                                                Sub: "{node.data.subtitleText}"
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-gray-400 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-gray-200 transition-colors z-40 pointer-events-auto" onMouseUp={(e) => handleTargetMouseUp(e, node.id)} />
-                                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-yellow-500 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-yellow-400 transition-colors z-40 pointer-events-auto" onMouseDown={(e) => handleSourceMouseDown(e, node.id)} />
-                                </div>
-                            );
-                        }
+                    <div className="absolute top-4 left-4 flex gap-2 z-40" onMouseDown={e => e.stopPropagation()}>
+                      <div className="flex bg-[#333] border border-[#555] rounded-md shadow-lg overflow-hidden">
+                         <button onClick={() => addDialogueNode('scene')} className="hover:bg-[#444] text-white px-3 py-2 font-bold flex items-center gap-1.5 transition-all text-xs active:bg-[#555] border-r border-[#555]"><Plus size={14} /> Scene</button>
+                         <button onClick={() => addDialogueNode('start')} className="hover:bg-[#444] text-green-400 px-3 py-2 font-bold flex items-center gap-1.5 transition-all text-xs active:bg-[#555] border-r border-[#555]"><Plus size={14} /> Start</button>
+                         <button onClick={() => addDialogueNode('change')} className="hover:bg-[#444] text-purple-400 px-3 py-2 font-bold flex items-center gap-1.5 transition-all text-xs active:bg-[#555] border-r border-[#555]"><Plus size={14} /> Change</button>
+                         <button onClick={() => addDialogueNode('actionbar')} className="hover:bg-[#444] text-cyan-400 px-3 py-2 font-bold flex items-center gap-1.5 transition-all text-xs active:bg-[#555]"><Plus size={14} /> Text</button>
+                      </div>
+                      <button onClick={autoLayout} className="bg-blue-600 hover:bg-blue-500 border border-blue-400 text-white px-3 py-2 rounded-md font-bold flex items-center gap-1.5 shadow-lg transition-all text-xs active:scale-95" title="Automatically organize nodes top-to-bottom"><Network size={14} /> Clean Layout</button>
+                    </div>
 
-                        const nodeActor = cast.find(c => c.id === node.data.speakerId) || cast[0];
-                        return (
-                        <div key={node.id} id={`node_${node.id}`} className={`absolute w-64 p-0 rounded-md border-2 shadow-2xl transition-transform cursor-move bg-[#2c2c2c] ${selectedNode?.id === node.id ? 'border-blue-400 z-30' : 'border-[#4a4a4a] z-20'} ${draggingNode === node.id ? 'opacity-90' : 'opacity-100'}`} style={{ left: node.position.x, top: node.position.y }} onMouseDown={(e) => handleNodeMouseDown(e, node)} onClick={(e) => e.stopPropagation()}>
-                            <div className="bg-[#1e1e1e] p-2 flex items-center justify-between border-b-2 border-[#151515]">
-                                <div className="flex items-center gap-2">
-                                    <div className={`w-3 h-3 rounded-full border border-black shadow-inner ${node.data.isStart ? 'bg-green-500' : 'bg-blue-500'}`} />
-                                    <span className="text-gray-300 text-xs font-bold uppercase tracking-wider">{node.data.isStart ? (node.data.sceneName || 'Start Scene') : 'Scene'}</span>
-                                </div>
-                                <span className="text-[10px] text-gray-500 font-mono">{node.id.substring(6,10)}</span>
-                            </div>
-                            <div className="p-3 flex flex-col gap-2 pointer-events-none">
-                                <div className="flex flex-col">
-                                    <div className="bg-[#3c3c3c] px-2 py-1 text-white border border-[#151515] rounded shadow-inner text-xs font-semibold truncate flex justify-between items-center">
-                                        <span>{nodeActor.name}</span>
-                                        <div className="w-2 h-2 rounded-full shadow-sm" style={{backgroundColor: nodeActor.eggBase}} />
-                                    </div>
-                                </div>
-                                <div className="flex flex-col">
-                                    <div className="bg-[#3c3c3c] px-2 pt-1 pb-1.5 text-gray-200 border border-[#151515] rounded shadow-inner text-xs italic whitespace-pre-wrap">
-                                        "{node.data.text}"
-                                    </div>
-                                </div>
-                            </div>
-                            {!node.data.isStart && <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-gray-400 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-gray-200 transition-colors z-40 pointer-events-auto" onMouseUp={(e) => handleTargetMouseUp(e, node.id)} />}
-                            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-yellow-500 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-yellow-400 transition-colors z-40 pointer-events-auto" onMouseDown={(e) => handleSourceMouseDown(e, node.id)} />
-                        </div>
-                    )})}
-                </div>
+                    <div className="absolute bottom-4 left-4 flex gap-2 z-40" onMouseDown={e => e.stopPropagation()}>
+                      <button onClick={() => { setPreviewSceneId(nodes.find(n=>n.data.isStart)?.id || nodes[0]?.id || 'start_scene'); setShowPreview(true); }} disabled={nodes.length === 0} className="bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-black px-5 py-2 rounded-md font-bold flex items-center gap-2 shadow-lg transition-all active:scale-95 text-sm"><Play size={16} fill="currentColor" /> Playtest</button>
+                    </div>
 
-                <div className="absolute top-4 left-4 flex gap-2 z-40" onMouseDown={e => e.stopPropagation()}>
-                  <div className="flex bg-[#333] border border-[#555] rounded-md shadow-lg overflow-hidden">
-                     <button onClick={() => addDialogueNode('scene')} className="hover:bg-[#444] text-white px-3 py-2 font-bold flex items-center gap-1.5 transition-all text-xs active:bg-[#555] border-r border-[#555]"><Plus size={14} /> Scene</button>
-                     <button onClick={() => addDialogueNode('start')} className="hover:bg-[#444] text-green-400 px-3 py-2 font-bold flex items-center gap-1.5 transition-all text-xs active:bg-[#555] border-r border-[#555]"><Plus size={14} /> Start</button>
-                     <button onClick={() => addDialogueNode('change')} className="hover:bg-[#444] text-purple-400 px-3 py-2 font-bold flex items-center gap-1.5 transition-all text-xs active:bg-[#555] border-r border-[#555]"><Plus size={14} /> Change</button>
-                     <button onClick={() => addDialogueNode('actionbar')} className="hover:bg-[#444] text-cyan-400 px-3 py-2 font-bold flex items-center gap-1.5 transition-all text-xs active:bg-[#555]"><Plus size={14} /> Text</button>
+                    <div className="absolute bottom-4 right-4 flex gap-1 z-40 bg-[#252526] p-1.5 rounded-lg border border-[#333] shadow-xl" onMouseDown={e => e.stopPropagation()}>
+                      <button onClick={() => setZoom(z => Math.max(0.2, z - 0.2))} className="p-1.5 text-gray-400 hover:text-white hover:bg-[#333] rounded transition-colors" title="Zoom Out"><ZoomOut size={18} /></button>
+                      <div className="flex items-center justify-center w-12 text-xs font-mono text-gray-300 font-bold">{Math.round(zoom * 100)}%</div>
+                      <button onClick={() => setZoom(z => Math.min(2, z + 0.2))} className="p-1.5 text-gray-400 hover:text-white hover:bg-[#333] rounded transition-colors" title="Zoom In"><ZoomIn size={18} /></button>
+                      <div className="w-px h-6 bg-[#444] mx-1"></div>
+                      <button onClick={() => { setZoom(1); setPan({x:0, y:0}); }} className="p-1.5 text-gray-400 hover:text-white hover:bg-[#333] rounded transition-colors" title="Reset View"><BoxIcon size={18} /></button>
+                      <button onClick={() => fitView()} className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-[#333] rounded transition-colors" title="Frame All Nodes"><Maximize size={18} /></button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="absolute inset-0 bg-[#1e1e1e] p-8 overflow-auto custom-scrollbar z-30 flex flex-col pt-20">
+                    <div className="max-w-4xl mx-auto w-full">
+                      <h2 className="text-xl font-bold text-gray-300 mb-4 flex items-center gap-2">
+                        <CodeIcon size={20} /> Generated JSON (scenes.json)
+                      </h2>
+                      <pre className="text-sm font-mono text-green-400 bg-[#0f172a] p-6 rounded-xl border border-[#333] shadow-inner overflow-x-auto whitespace-pre-wrap">
+                        {JSON.stringify({
+                          format_version: "1.17",
+                          "minecraft:npc_dialogue": { 
+                            scenes: generateDialogueScenesData((packName || "custom").toLowerCase().replace(/[^a-z0-9]/g, '_') + '_preview') 
+                          }
+                        }, null, 2)}
+                      </pre>
+                    </div>
                   </div>
-                  <button onClick={autoLayout} className="bg-blue-600 hover:bg-blue-500 border border-blue-400 text-white px-3 py-2 rounded-md font-bold flex items-center gap-1.5 shadow-lg transition-all text-xs active:scale-95" title="Automatically organize nodes top-to-bottom"><Network size={14} /> Clean Layout</button>
-                </div>
+                )}
 
-                <div className="absolute bottom-4 left-4 flex gap-2 z-40" onMouseDown={e => e.stopPropagation()}>
-                  <button onClick={() => { setPreviewSceneId(nodes.find(n=>n.data.isStart)?.id || nodes[0]?.id || 'start_scene'); setShowPreview(true); }} disabled={nodes.length === 0} className="bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-black px-5 py-2 rounded-md font-bold flex items-center gap-2 shadow-lg transition-all active:scale-95 text-sm"><Play size={16} fill="currentColor" /> Playtest</button>
-                </div>
-
-                <div className="absolute bottom-4 right-4 flex gap-1 z-40 bg-[#252526] p-1.5 rounded-lg border border-[#333] shadow-xl" onMouseDown={e => e.stopPropagation()}>
-                  <button onClick={() => setZoom(z => Math.max(0.2, z - 0.2))} className="p-1.5 text-gray-400 hover:text-white hover:bg-[#333] rounded transition-colors" title="Zoom Out"><ZoomOut size={18} /></button>
-                  <div className="flex items-center justify-center w-12 text-xs font-mono text-gray-300 font-bold">{Math.round(zoom * 100)}%</div>
-                  <button onClick={() => setZoom(z => Math.min(2, z + 0.2))} className="p-1.5 text-gray-400 hover:text-white hover:bg-[#333] rounded transition-colors" title="Zoom In"><ZoomIn size={18} /></button>
-                  <div className="w-px h-6 bg-[#444] mx-1"></div>
-                  <button onClick={() => { setZoom(1); setPan({x:0, y:0}); }} className="p-1.5 text-gray-400 hover:text-white hover:bg-[#333] rounded transition-colors" title="Reset View"><BoxIcon size={18} /></button>
-                  <button onClick={() => fitView()} className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-[#333] rounded transition-colors" title="Frame All Nodes"><Maximize size={18} /></button>
+                <div className="absolute top-4 right-4 flex gap-2 z-40" onMouseDown={e => e.stopPropagation()}>
+                  <button onClick={() => setViewMode(v => v === 'nodes' ? 'code' : 'nodes')} className="bg-[#333] hover:bg-[#444] border border-[#555] text-white px-4 py-2 rounded-md font-bold flex items-center gap-2 shadow-lg transition-all text-sm active:scale-95">
+                    {viewMode === 'nodes' ? <><CodeIcon size={16} /> View Code</> : <><Network size={16} /> View Nodes</>}
+                  </button>
                 </div>
               </main>
 
@@ -1613,13 +1648,9 @@
 
                             <div className="space-y-1">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase">Target Selector</label>
-                                <select className="w-full bg-[#333] border border-[#444] rounded px-3 py-1.5 text-sm focus:border-cyan-500 outline-none transition-colors text-white font-mono" value={activeNode.data.targetPlayer || '@p'} onChange={(e) => updateNodeData(activeNode.id, { targetPlayer: e.target.value })}>
-                                    <option value="@p">Nearest Player (@p)</option>
+                                <select className="w-full bg-[#333] border border-[#444] rounded px-3 py-1.5 text-sm focus:border-cyan-500 outline-none transition-colors text-white font-mono" value={activeNode.data.targetPlayer || '@initiator'} onChange={(e) => updateNodeData(activeNode.id, { targetPlayer: e.target.value })}>
+                                    <option value="@initiator">Dialogue Initiator (@initiator)</option>
                                     <option value="@a">All Players (@a)</option>
-                                    <option value="@a[r=5]">Players within 5 blocks (@a[r=5])</option>
-                                    <option value="@a[r=10]">Players within 10 blocks (@a[r=10])</option>
-                                    <option value="@a[r=25]">Players within 25 blocks (@a[r=25])</option>
-                                    <option value="@a[r=50]">Players within 50 blocks (@a[r=50])</option>
                                 </select>
                             </div>
                             <div className="space-y-1">
