@@ -60,6 +60,8 @@
         const CodeIcon = (p) => <Icon {...p} d={<><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></>} />;
         const Save = (p) => <Icon {...p} d={<><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>} />;
         const Folder = (p) => <Icon {...p} d={<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>} />;
+        const CopyIcon = (p) => <Icon {...p} d={<><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>} />;
+        const CheckIcon = (p) => <Icon {...p} d={<polyline points="20 6 9 17 4 12"/>} />;
 
         const generateUUID = () => {
           return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -343,6 +345,7 @@
           const [nameError, setNameError] = useState(false);
           const [isDraggingSkin, setIsDraggingSkin] = useState(false);
           const [viewMode, setViewMode] = useState('nodes'); 
+          const [isCopied, setIsCopied] = useState(false);
           
           const [cast, setCast] = useState([
             { id: 'char_1', name: 'My NPC', skinUrl: generateDefaultSkin(defaultColors[0]), eggBase: '#EAB308', eggOverlay: '#111111' }
@@ -1223,6 +1226,28 @@
             }
           };
 
+          const handleCopyCode = () => {
+            const codeStr = JSON.stringify({
+              format_version: "1.17",
+              "minecraft:npc_dialogue": { 
+                scenes: generateDialogueScenesData((packName || "custom").toLowerCase().replace(/[^a-z0-9]/g, '_') + '_preview') 
+              }
+            }, null, 2);
+            
+            const textArea = document.createElement("textarea");
+            textArea.value = codeStr;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                setIsCopied(true);
+                setTimeout(() => setIsCopied(false), 2000);
+            } catch (err) {
+                console.error('Failed to copy', err);
+            }
+            document.body.removeChild(textArea);
+          };
+
           const handlePreviewOption = (targetId) => {
               let actualTarget = nodes.find(n => n.id === targetId);
               let visited = new Set();
@@ -1729,10 +1754,15 @@
                   </>
                 ) : (
                   <div className="absolute inset-0 bg-[#1e1e1e] p-8 overflow-auto custom-scrollbar z-30 flex flex-col pt-20">
-                    <div className="max-w-4xl mx-auto w-full">
-                      <h2 className="text-xl font-bold text-gray-300 mb-4 flex items-center gap-2">
-                        <CodeIcon size={20} /> Generated JSON (scenes.json)
-                      </h2>
+                    <div className="max-w-4xl mx-auto w-full relative">
+                      <div className="flex justify-between items-center mb-4">
+                          <h2 className="text-xl font-bold text-gray-300 flex items-center gap-2">
+                            <CodeIcon size={20} /> Generated JSON (scenes.json)
+                          </h2>
+                          <button onClick={handleCopyCode} className="flex items-center gap-2 bg-[#333] hover:bg-[#444] border border-[#555] text-white px-3 py-1.5 rounded text-sm font-bold transition-all shadow-sm active:scale-95">
+                              {isCopied ? <><CheckIcon size={16} className="text-green-400"/> Copied!</> : <><CopyIcon size={16}/> Copy Code</>}
+                          </button>
+                      </div>
                       <pre className="text-sm font-mono text-green-400 bg-[#0f172a] p-6 rounded-xl border border-[#333] shadow-inner overflow-x-auto whitespace-pre-wrap">
                         {JSON.stringify({
                           format_version: "1.17",
