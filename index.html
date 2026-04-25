@@ -17,8 +17,16 @@
     
     <style>
         @font-face {
-          font-family: 'Minecraft';
-          src: url('https://fonts.cdnfonts.com/s/14894/Minecraft.woff') format('woff');
+            font-family: 'Minecraft';
+            src: url('https://cdn.jsdelivr.net/gh/South-Paw/typeface-minecraft@master/public/Minecraft-Regular.woff2') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: 'Minecraft';
+            src: url('https://cdn.jsdelivr.net/gh/South-Paw/typeface-minecraft@master/public/Minecraft-Bold.woff2') format('woff2');
+            font-weight: bold;
+            font-style: normal;
         }
         .font-minecraft {
           font-family: 'Minecraft', 'Courier New', Courier, monospace;
@@ -72,6 +80,27 @@
         };
 
         const defaultColors = ['#00FFFF', '#FF3366', '#33FF33', '#9933FF'];
+
+        const MINECRAFT_COLORS = [
+            { code: '§f', name: 'White', hex: '#FFFFFF' },
+            { code: '§7', name: 'Gray', hex: '#AAAAAA' },
+            { code: '§8', name: 'Dark Gray', hex: '#555555' },
+            { code: '§0', name: 'Black', hex: '#000000' },
+            { code: '§c', name: 'Red', hex: '#FF5555' },
+            { code: '§4', name: 'Dark Red', hex: '#AA0000' },
+            { code: '§e', name: 'Yellow', hex: '#FFFF55' },
+            { code: '§6', name: 'Gold', hex: '#FFAA00' },
+            { code: '§a', name: 'Green', hex: '#55FF55' },
+            { code: '§2', name: 'Dark Green', hex: '#00AA00' },
+            { code: '§b', name: 'Aqua', hex: '#55FFFF' },
+            { code: '§3', name: 'Dark Aqua', hex: '#00AAAA' },
+            { code: '§9', name: 'Blue', hex: '#5555FF' },
+            { code: '§1', name: 'Dark Blue', hex: '#0000AA' },
+            { code: '§d', name: 'Light Purple', hex: '#FF55FF' },
+            { code: '§5', name: 'Dark Purple', hex: '#AA00AA' }
+        ];
+
+        const getColorHex = (code) => MINECRAFT_COLORS.find(c => c.code === code)?.hex || '#FFFFFF';
         
         const MINECRAFT_ITEMS = [
             { id: '', name: 'None' },
@@ -273,7 +302,7 @@
             return canvas.toDataURL().split(',')[1];
         };
 
-        const SkinViewer = ({ skinUrl, animation = "walk", camX = 20, camY = 15, camZ = 40, zoom = 0.8, width = 250, height = 350, hideBadge = false }) => {
+        const SkinViewer = ({ skinUrl, animation = "walk", camX = 20, camY = 15, camZ = 40, zoom = 0.8, width = 250, height = 350 }) => {
           const viewerRef = useRef(null);
           const skinViewerInstance = useRef(null);
           const [scriptLoaded, setScriptLoaded] = useState(!!window.skinview3d);
@@ -305,6 +334,10 @@
             skinViewerInstance.current.camera.position.set(camX, camY, camZ);
             skinViewerInstance.current.zoom = zoom;
             
+            // Allow dynamic resize if props change
+            skinViewerInstance.current.width = width;
+            skinViewerInstance.current.height = height;
+            
           }, [scriptLoaded, camX, camY, camZ, zoom, width, height]);
 
           useEffect(() => {
@@ -330,13 +363,8 @@
           }, []);
 
           return (
-            <div className="relative group w-full h-full">
+            <div className="relative group w-full h-full flex items-center justify-center">
               <canvas ref={viewerRef} className="w-full h-full block rounded-lg" />
-              {!hideBadge && (
-                <div className="absolute bottom-2 right-2 opacity-50 group-hover:opacity-100 transition-opacity pointer-events-none">
-                  <span className="bg-black/80 text-[10px] text-white px-2 py-1 rounded">3D Interactive</span>
-                </div>
-              )}
             </div>
           );
         };
@@ -364,7 +392,9 @@
           const [selectedEdge, setSelectedEdge] = useState(null);
 
           const [showPreview, setShowPreview] = useState(false);
-          const [previewSceneId, setPreviewSceneId] = useState('start_scene');
+          const [previewSceneId, setPreviewSceneId] = useState(null); 
+          const [playtestOverlay, setPlaytestOverlay] = useState({ title: '', subtitle: '', actionbar: '', titleColor: '§f', subtitleColor: '§f', actionbarColor: '§f' });
+          const [npcStates, setNpcStates] = useState({});
           
           const [isExporting, setIsExporting] = useState(false);
           const [pdfMode, setPdfMode] = useState(false);
@@ -418,6 +448,16 @@
 
             return () => observer.disconnect();
           }, [nodes]);
+
+          useEffect(() => {
+              let timer;
+              if (playtestOverlay.title || playtestOverlay.subtitle) {
+                  timer = setTimeout(() => {
+                      setPlaytestOverlay(prev => ({ ...prev, title: '', subtitle: '' }));
+                  }, 3000);
+              }
+              return () => clearTimeout(timer);
+          }, [playtestOverlay.title, playtestOverlay.subtitle]);
 
           const handleCanvasMouseDown = (e) => {
             if (e.target === canvasContainerRef.current || e.target.tagName === 'DIV') {
@@ -536,7 +576,7 @@
               if (sourceNode?.data.isChangeScene) {
                   newNodeData = { isChangeScene: true, targetNodeId: '', silentUpdate: true };
               } else if (sourceNode?.data.isActionbar) {
-                  newNodeData = { isActionbar: true, actionbarText: '', targetPlayer: '@initiator', displaySlot: 'actionbar' };
+                  newNodeData = { isActionbar: true, actionbarText: '', targetPlayer: '@initiator', displaySlot: 'actionbar', textColor: '§f', subtitleColor: '§f' };
               }
               
               const newNode = {
@@ -644,7 +684,7 @@
             } else if (type === 'change') {
               newNode.data = { isChangeScene: true, targetNodeId: '', silentUpdate: true };
             } else if (type === 'actionbar') {
-              newNode.data = { isActionbar: true, actionbarText: '', targetPlayer: '@initiator', displaySlot: 'actionbar' };
+              newNode.data = { isActionbar: true, actionbarText: '', targetPlayer: '@initiator', displaySlot: 'actionbar', textColor: '§f', subtitleColor: '§f' };
             } else {
               newNode.data = { text: 'Click to edit this new dialogue.', speakerId: activeActorId, isStart: false, hasCloseButton: false, closeButtonLabel: 'Goodbye', despawnCast: false };
             }
@@ -918,9 +958,10 @@
                                   const tActor = cast.find(c => c.id === tsNode.data.speakerId) || cast[0];
                                   activeNpcId = tActor.id; 
                                   if (currentNode.data.silentUpdate) {
-                                      actionCommands.push(`/dialogue change @e[type=forge:${safeName}_${tActor.id}] ${safeName}_${targetStartId}`);
+                                      actionCommands.push(`/dialogue change @e[type=forge:${safeName}_${tActor.id}] ${safeName}_${targetStartId} @initiator`);
                                   } else {
-                                      actionCommands.push(`/dialogue change @e[type=forge:${safeName}_${tActor.id},r=50,c=1] ${safeName}_${targetStartId} @initiator`);
+                                      actionCommands.push(`/dialogue change @e[type=forge:${safeName}_${tActor.id},c=1] ${safeName}_${targetStartId} @initiator`);
+                                      actionCommands.push(`/dialogue open @e[type=forge:${safeName}_${tActor.id},c=1] @initiator ${safeName}_${targetStartId}`);
                                   }
                               }
                           }
@@ -931,13 +972,15 @@
                           const subtitle = currentNode.data.subtitleText;
                           const target = currentNode.data.targetPlayer || '@initiator';
                           const displaySlot = currentNode.data.displaySlot || 'actionbar';
+                          const tColor = currentNode.data.textColor || '§f';
+                          const sColor = currentNode.data.subtitleColor || '§f';
 
                           if (displaySlot === 'title') {
                               if (text && text.trim() !== '') {
                                   if (subtitle && subtitle.trim() !== '') {
-                                      actionCommands.push(`/title ${target} subtitle ${subtitle.trim()}`);
+                                      actionCommands.push(`/title ${target} subtitle ${sColor}${subtitle.trim()}`);
                                   }
-                                  actionCommands.push(`/title ${target} title ${text.trim()}`);
+                                  actionCommands.push(`/title ${target} title ${tColor}${text.trim()}`);
                               } else {
                                   actionCommands.push(`/title ${target} clear`);
                               }
@@ -978,8 +1021,8 @@
                       
                       if (finalUiNode) {
                           const targetActor = cast.find(c => c.id === finalUiNode.data.speakerId) || cast[0];
-                          finalCommands.push(`/event entity @e[type=forge:${safeName}_${targetActor.id},r=50,c=1] forge:play_talking`);
-                          finalCommands.push(`/dialogue open @e[type=forge:${safeName}_${targetActor.id},r=50,c=1] @initiator ${safeName}_${finalUiNode.id}`);
+                          finalCommands.push(`/event entity @e[type=forge:${safeName}_${targetActor.id},c=1] forge:play_talking`);
+                          finalCommands.push(`/dialogue open @e[type=forge:${safeName}_${targetActor.id},c=1] @initiator ${safeName}_${finalUiNode.id}`);
                       }
                       
                       finalCommands.push(...generatedCommands, ...customCommands);
@@ -1056,7 +1099,8 @@
 
                 let tickCommands = "";
                 actionbarNodes.forEach(n => {
-                    tickCommands += `title @a[tag=forge_ab_${n.id}] actionbar ${n.data.actionbarText.trim()}\n`;
+                    const color = n.data.textColor || '§f';
+                    tickCommands += `title @a[tag=forge_ab_${n.id}] actionbar ${color}${n.data.actionbarText.trim()}\n`;
                 });
                 if (tickCommands === "") {
                     tickCommands = "# No persistent actionbars configured\n";
@@ -1180,27 +1224,6 @@
                     }
                   }, null, 2));
 
-                  rpFolder.file(`animations/${fileName}.animation.json`, JSON.stringify({
-                    "format_version": "1.8.0",
-                    "animations": {
-                      "animation.npc.speech": {
-                        "animation_length": 2,
-                        "loop": false,
-                        "bones": {
-                          "head": {
-                            "rotation": { "0.0": [5.0, -2.5, 0], "0.25": [12.5, 2.4, 0.6], "0.5": [-2.5, 0, 0], "0.75": [5.0, -2.5, 0], "1.0": [12.5, -2.5, 0], "1.25": [-2.5, 2.4, -0.3], "1.5": [5.0, -2.5, 0], "1.75": [12.4, -4.9, -0.2], "2.0": [-2.5, 0, 0] }
-                          },
-                          "rightArm": {
-                            "rotation": { "0.0": [10, 0, 0], "0.25": [-7.3, 2.2, 7.1], "0.5": [-6.9, 4.4, 14.3], "0.75": [-7.4, 3.2, 6.9], "1.0": [-17.2, 4.3, 9.1], "1.25": [-9.7, 4.3, 9.1], "1.5": [-9.9, 3.4, 6.7], "1.75": [-17.4, 3.4, 6.7], "2.0": [10, 0, 0] }
-                          },
-                          "leftArm": {
-                            "rotation": { "0.0": [-12.4, 0, 0], "0.25": [-39.9, -0.1, -17.4], "0.5": [-59.9, -0.1, -17.4], "0.75": [-49.9, -0.1, -17.4], "1.0": [-52.2, -4.7, -23.4], "1.25": [-57.2, -4.7, -23.4], "1.5": [-59.8, 0.7, -18.3], "1.75": [-49.8, 0.7, -18.3], "2.0": [-12.4, 0, 0] }
-                          }
-                        }
-                      }
-                    }
-                  }, null, 2));
-
                   const res = await fetch(actor.skinUrl);
                   const skinBlob = await res.blob();
                   rpFolder.file(`textures/entity/${fileName}.png`, skinBlob);
@@ -1249,30 +1272,69 @@
             document.body.removeChild(textArea);
           };
 
-          const handlePreviewOption = (targetId) => {
+          const initiateDialogue = (npcId) => {
+              const activeStartId = npcStates[npcId];
+              if (activeStartId) {
+                  advancePlaytest(activeStartId);
+              } else {
+                  const fallbackStart = nodes.find(n => n.data.isStart && n.data.speakerId === npcId);
+                  if (fallbackStart) advancePlaytest(fallbackStart.id);
+              }
+          };
+
+          const advancePlaytest = (targetId) => {
               let actualTarget = nodes.find(n => n.id === targetId);
               let visited = new Set();
+              
+              let currentOverlay = { ...playtestOverlay };
+              let newNpcStates = { ...npcStates };
+              let forceJumpTo = null;
               
               while (actualTarget && (actualTarget.data.isChangeScene || actualTarget.data.isActionbar)) {
                   if (visited.has(actualTarget.id)) break;
                   visited.add(actualTarget.id);
                   
+                  if (actualTarget.data.isActionbar) {
+                      if (actualTarget.data.displaySlot === 'title') {
+                          currentOverlay.title = actualTarget.data.actionbarText || '';
+                          currentOverlay.titleColor = actualTarget.data.textColor || '§f';
+                          currentOverlay.subtitle = actualTarget.data.subtitleText || '';
+                          currentOverlay.subtitleColor = actualTarget.data.subtitleColor || '§f';
+                      } else {
+                          currentOverlay.actionbar = actualTarget.data.actionbarText || '';
+                          currentOverlay.actionbarColor = actualTarget.data.textColor || '§f';
+                      }
+                  } else if (actualTarget.data.isChangeScene) {
+                      const targetStartId = actualTarget.data.targetNodeId;
+                      if (targetStartId) {
+                          const tsNode = nodes.find(n => n.id === targetStartId);
+                          if (tsNode) {
+                              newNpcStates[tsNode.data.speakerId] = targetStartId;
+                              if (!actualTarget.data.silentUpdate) {
+                                  forceJumpTo = targetStartId;
+                              }
+                          }
+                      }
+                  }
+
                   const nextEdge = edges.find(edge => edge.source === actualTarget.id);
                   if (nextEdge) {
                       actualTarget = nodes.find(n => n.id === nextEdge.target);
                   } else {
-                      if (actualTarget.data.isChangeScene) {
-                          actualTarget = nodes.find(n => n.id === actualTarget.data.targetNodeId);
-                      } else {
-                          actualTarget = null;
-                      }
+                      actualTarget = null;
                       break;
                   }
               }
-              if (actualTarget && !actualTarget.data.isChangeScene && !actualTarget.data.isActionbar) {
+              
+              setPlaytestOverlay(currentOverlay);
+              setNpcStates(newNpcStates);
+              
+              if (forceJumpTo) {
+                  setPreviewSceneId(forceJumpTo);
+              } else if (actualTarget && !actualTarget.data.isChangeScene && !actualTarget.data.isActionbar) {
                   setPreviewSceneId(actualTarget.id);
               } else {
-                  setShowPreview(false); 
+                  setPreviewSceneId(null); 
               }
           };
 
@@ -1309,7 +1371,7 @@
                         {cast.map(actor => (
                            <div key={`pdf_actor_${actor.id}`} className="flex items-center gap-6 bg-gray-50 p-4 rounded-xl border-2 border-gray-200 shadow-sm pr-12">
                               <div className="w-[120px] h-[160px] bg-gray-200 rounded-lg overflow-hidden border-2 border-gray-300 flex items-center justify-center">
-                                 <SkinViewer skinUrl={actor.skinUrl} animation="idle" camX={-15} camY={12} camZ={40} zoom={0.6} width={120} height={160} hideBadge={true} />
+                                 <SkinViewer skinUrl={actor.skinUrl} animation="idle" camX={-15} camY={12} camZ={40} zoom={0.6} width={120} height={160} />
                               </div>
                               <div className="flex flex-col gap-5">
                                  <span className="text-3xl font-bold text-gray-800 pb-1">{actor.name}</span>
@@ -1406,11 +1468,11 @@
                                               <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">{node.data.displaySlot === 'title' ? 'Title:' : 'Actionbar:'}</div>
                                               <div className="text-[9px] text-cyan-500 font-bold uppercase bg-[#0f172a] px-1.5 py-0.5 rounded border border-[#151515]">{node.data.targetPlayer || '@initiator'}</div>
                                           </div>
-                                          <div className="bg-[#0f172a] px-3 py-2 text-white border-2 border-[#151515] rounded-md shadow-inner text-sm font-bold text-center truncate italic">
+                                          <div className="bg-[#0f172a] px-3 py-2 border-2 border-[#151515] rounded-md shadow-inner text-sm font-bold text-center truncate italic" style={{ color: getColorHex(node.data.textColor || '§f') }}>
                                               {node.data.actionbarText ? `"${node.data.actionbarText}"` : "CLEAR TEXT"}
                                           </div>
                                           {node.data.displaySlot === 'title' && node.data.subtitleText && (
-                                              <div className="bg-[#0f172a] px-3 py-1.5 text-gray-300 border-2 border-[#151515] rounded-md shadow-inner text-xs font-bold text-center truncate italic">
+                                              <div className="bg-[#0f172a] px-3 py-1.5 border-2 border-[#151515] rounded-md shadow-inner text-xs font-bold text-center truncate italic" style={{ color: getColorHex(node.data.subtitleColor || '§f') }}>
                                                   Sub: "{node.data.subtitleText}"
                                               </div>
                                           )}
@@ -1440,8 +1502,8 @@
                                       "{node.data.text}"
                                   </div>
                               </div>
-                              {!node.data.isStart && <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 bg-gray-400 border-[3px] border-[#151515] rounded-sm" />}
-                              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-6 h-6 bg-yellow-500 border-[3px] border-[#151515] rounded-sm" />
+                              {!node.data.isStart && <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-gray-400 border-[3px] border-[#151515] rounded-sm cursor-crosshair hover:bg-gray-200 transition-colors z-40 pointer-events-auto" onMouseUp={(e) => handleTargetMouseUp(e, node.id)} onMouseDown={(e) => e.stopPropagation()} />}
+                              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-yellow-500 border-[3px] border-[#151515] rounded-sm cursor-crosshair hover:bg-yellow-400 transition-colors z-40 pointer-events-auto" onMouseDown={(e) => handleSourceMouseDown(e, node.id)} />
                           </div>
                       )})}
                   </div>
@@ -1667,7 +1729,7 @@
                                                 {node.data.silentUpdate ? "Silent Update" : "Moves Player UI"}
                                             </div>
                                         </div>
-                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-gray-400 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-gray-200 transition-colors z-40 pointer-events-auto" onMouseUp={(e) => handleTargetMouseUp(e, node.id)} />
+                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-gray-400 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-gray-200 transition-colors z-40 pointer-events-auto" onMouseUp={(e) => handleTargetMouseUp(e, node.id)} onMouseDown={(e) => e.stopPropagation()} />
                                         <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-yellow-500 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-yellow-400 transition-colors z-40 pointer-events-auto" onMouseDown={(e) => handleSourceMouseDown(e, node.id)} />
                                     </div>
                                 );
@@ -1686,17 +1748,17 @@
                                                 <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">{node.data.displaySlot === 'title' ? 'Title:' : 'Actionbar:'}</div>
                                                 <div className="text-[9px] text-cyan-500 font-bold uppercase bg-[#0f172a] px-1.5 py-0.5 rounded border border-[#151515]">{node.data.targetPlayer || '@initiator'}</div>
                                             </div>
-                                            <div className="bg-[#0f172a] px-2 py-1.5 text-white border border-[#151515] rounded shadow-inner text-xs italic truncate">
+                                            <div className="bg-[#0f172a] px-3 py-2 border-2 border-[#151515] rounded-md shadow-inner text-sm font-bold text-center truncate italic" style={{ color: getColorHex(node.data.textColor || '§f') }}>
                                                 {node.data.actionbarText ? `"${node.data.actionbarText}"` : "CLEAR TEXT"}
                                             </div>
                                             {node.data.displaySlot === 'title' && node.data.subtitleText && (
-                                                <div className="bg-[#0f172a] px-2 py-1 text-gray-300 border border-[#151515] rounded shadow-inner text-[10px] italic truncate mt-0.5">
+                                                <div className="bg-[#0f172a] px-3 py-1.5 border-2 border-[#151515] rounded-md shadow-inner text-xs font-bold text-center truncate italic" style={{ color: getColorHex(node.data.subtitleColor || '§f') }}>
                                                     Sub: "{node.data.subtitleText}"
                                                 </div>
                                             )}
                                         </div>
-                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-gray-400 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-gray-200 transition-colors z-40 pointer-events-auto" onMouseUp={(e) => handleTargetMouseUp(e, node.id)} />
-                                        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-yellow-500 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-yellow-400 transition-colors z-40 pointer-events-auto" onMouseDown={(e) => handleSourceMouseDown(e, node.id)} />
+                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-gray-400 border-[3px] border-[#151515] rounded-sm cursor-crosshair hover:bg-gray-200 transition-colors z-40 pointer-events-auto" onMouseUp={(e) => handleTargetMouseUp(e, node.id)} onMouseDown={(e) => e.stopPropagation()} />
+                                        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-yellow-500 border-[3px] border-[#151515] rounded-sm cursor-crosshair hover:bg-yellow-400 transition-colors z-40 pointer-events-auto" onMouseDown={(e) => handleSourceMouseDown(e, node.id)} />
                                     </div>
                                 );
                             }
@@ -1719,13 +1781,13 @@
                                         </div>
                                     </div>
                                     <div className="flex flex-col">
-                                        <div className="bg-[#3c3c3c] px-2 pt-1 pb-1.5 text-gray-200 border border-[#151515] rounded shadow-inner text-xs italic whitespace-pre-wrap">
+                                        <div className="bg-[#3c3c3c] px-2 pt-1 pb-1.5 text-gray-200 border border-[#151515] rounded shadow-inner text-xs italic whitespace-pre-wrap flex-1">
                                             "{node.data.text}"
                                         </div>
                                     </div>
                                 </div>
-                                {!node.data.isStart && <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-gray-400 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-gray-200 transition-colors z-40 pointer-events-auto" onMouseUp={(e) => handleTargetMouseUp(e, node.id)} />}
-                                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-yellow-500 border-2 border-[#151515] rounded-sm cursor-crosshair hover:bg-yellow-400 transition-colors z-40 pointer-events-auto" onMouseDown={(e) => handleSourceMouseDown(e, node.id)} />
+                                {!node.data.isStart && <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-gray-400 border-[3px] border-[#151515] rounded-sm cursor-crosshair hover:bg-gray-200 transition-colors z-40 pointer-events-auto" onMouseUp={(e) => handleTargetMouseUp(e, node.id)} onMouseDown={(e) => e.stopPropagation()} />}
+                                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-yellow-500 border-[3px] border-[#151515] rounded-sm cursor-crosshair hover:bg-yellow-400 transition-colors z-40 pointer-events-auto" onMouseDown={(e) => handleSourceMouseDown(e, node.id)} />
                             </div>
                         )})}
                     </div>
@@ -1740,8 +1802,18 @@
                       <button onClick={autoLayout} className="bg-blue-600 hover:bg-blue-500 border border-blue-400 text-white px-3 py-2 rounded-md font-bold flex items-center gap-1.5 shadow-lg transition-all text-xs active:scale-95" title="Automatically organize nodes top-to-bottom"><Network size={14} /> Clean Layout</button>
                     </div>
 
-                    <div className="absolute bottom-4 left-4 flex gap-2 z-40" onMouseDown={e => e.stopPropagation()}>
-                      <button onClick={() => { setPreviewSceneId(nodes.find(n=>n.data.isStart)?.id || nodes[0]?.id || 'start_scene'); setShowPreview(true); }} disabled={nodes.length === 0} className="bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-black px-5 py-2 rounded-md font-bold flex items-center gap-2 shadow-lg transition-all active:scale-95 text-sm"><Play size={16} fill="currentColor" /> Playtest</button>
+                    <div className="absolute bottom-4 left-4 flex gap-2 z-40 bg-[#252526] p-1.5 rounded-lg border border-[#333] shadow-xl" onMouseDown={e => e.stopPropagation()}>
+                      <button onClick={() => { 
+                          const initialStates = {};
+                          cast.forEach(actor => {
+                              const defaultStart = nodes.find(n => n.data.isStart && n.data.speakerId === actor.id);
+                              if (defaultStart) initialStates[actor.id] = defaultStart.id;
+                          });
+                          setNpcStates(initialStates);
+                          setShowPreview(true); 
+                          setPreviewSceneId(null); 
+                          setPlaytestOverlay({title:'', subtitle:'', actionbar:'', titleColor: '§f', subtitleColor: '§f', actionbarColor: '§f'}); 
+                      }} disabled={nodes.length === 0} className="bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-black px-5 py-1.5 rounded font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95 text-sm"><Play size={16} fill="currentColor" /> Playtest</button>
                     </div>
 
                     <div className="absolute bottom-4 right-4 flex gap-1 z-40 bg-[#252526] p-1.5 rounded-lg border border-[#333] shadow-xl" onMouseDown={e => e.stopPropagation()}>
@@ -1829,16 +1901,41 @@
                                     <option value="@a">All Players (@a)</option>
                                 </select>
                             </div>
+                            
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase">Text Color</label>
+                                <select 
+                                    className="w-full bg-[#333] border border-[#444] rounded px-3 py-1.5 text-sm focus:border-cyan-500 outline-none transition-colors font-bold"
+                                    style={{ color: getColorHex(activeNode.data.textColor || '§f') }}
+                                    value={activeNode.data.textColor || '§f'}
+                                    onChange={(e) => updateNodeData(activeNode.id, { textColor: e.target.value })}
+                                >
+                                    {MINECRAFT_COLORS.map(c => <option key={`t_${c.code}`} value={c.code} style={{ color: c.hex }}>{c.name} ({c.code})</option>)}
+                                </select>
+                            </div>
                             <div className="space-y-1">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase">Text (Leave Blank to Clear)</label>
                                 <textarea className="w-full bg-[#333] border border-[#444] rounded px-3 py-2 text-sm h-16 resize-none focus:border-cyan-500 outline-none transition-colors" placeholder="Leave blank to clear text from screen..." value={activeNode.data.actionbarText ?? ''} onChange={(e) => updateNodeData(activeNode.id, { actionbarText: e.target.value })} />
                             </div>
                             
                             {activeNode.data.displaySlot === 'title' && (
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase">Subtitle (Optional)</label>
-                                    <textarea className="w-full bg-[#333] border border-[#444] rounded px-3 py-2 text-sm h-16 resize-none focus:border-cyan-500 outline-none transition-colors" placeholder="Displays under Main Title..." value={activeNode.data.subtitleText ?? ''} onChange={(e) => updateNodeData(activeNode.id, { subtitleText: e.target.value })} />
-                                </div>
+                                <>
+                                    <div className="space-y-1 pt-3 border-t border-[#444] mt-3">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase">Subtitle Color</label>
+                                        <select 
+                                            className="w-full bg-[#333] border border-[#444] rounded px-3 py-1.5 text-sm focus:border-cyan-500 outline-none transition-colors font-bold"
+                                            style={{ color: getColorHex(activeNode.data.subtitleColor || '§f') }}
+                                            value={activeNode.data.subtitleColor || '§f'}
+                                            onChange={(e) => updateNodeData(activeNode.id, { subtitleColor: e.target.value })}
+                                        >
+                                            {MINECRAFT_COLORS.map(c => <option key={`s_${c.code}`} value={c.code} style={{ color: c.hex }}>{c.name} ({c.code})</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase">Subtitle (Optional)</label>
+                                        <textarea className="w-full bg-[#333] border border-[#444] rounded px-3 py-2 text-sm h-16 resize-none focus:border-cyan-500 outline-none transition-colors" placeholder="Displays under Main Title..." value={activeNode.data.subtitleText ?? ''} onChange={(e) => updateNodeData(activeNode.id, { subtitleText: e.target.value })} />
+                                    </div>
+                                </>
                             )}
 
                             <button onClick={() => { setNodes(nds => nds.filter(n => n.id !== activeNode.id)); setEdges(eds => eds.filter(e => e.source !== activeNode.id && e.target !== activeNode.id)); setSelectedNode(null); }} className="w-full flex items-center justify-center gap-2 mt-3 p-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded text-xs font-bold transition-all"><Trash2 size={14} /> Delete Node</button>
@@ -1947,37 +2044,90 @@
                 </div>
               </aside>
 
-              {showPreview && currentPreviewNode && !currentPreviewNode.data.isChangeScene && !currentPreviewNode.data.isActionbar && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                  <div className="relative w-full max-w-4xl bg-[#c6c6c6] border-2 border-[#1e1e1e] shadow-[inset_2px_2px_0px_#ffffff,inset_-2px_-2px_0px_#555555] p-2 flex flex-col font-minecraft select-none">
-                    <div className="relative flex justify-center items-center py-2 mb-2">
-                      <h3 className="text-[#3c3c3c] text-[22px] tracking-wide">{previewActor.name}</h3>
-                      <button onClick={() => setShowPreview(false)} className="absolute right-2 top-0 p-1 text-[#555] hover:text-[#1e1e1e] transition-colors"><XIcon size={28} strokeWidth={2.5} /></button>
-                    </div>
-                    <div className="flex flex-row gap-6 px-4 pb-2">
-                      <div className="w-[200px] h-[280px] bg-[#484848] border-[3px] border-[#1e1e1e] shadow-[inset_3px_3px_0px_#222,inset_-3px_-3px_0px_#666] relative flex items-center justify-center flex-shrink-0 overflow-hidden">
-                        <div className="absolute inset-0 flex items-center justify-center -translate-y-4">
-                          <div className="w-[250px] h-[350px] scale-90"><SkinViewer skinUrl={previewActor.skinUrl} animation="idle" camX={-12} camY={12} camZ={35} /></div>
-                        </div>
-                      </div>
-                      <div className="flex-1 relative bg-[#ececec] border-2 border-[#1e1e1e] rounded-sm p-6 shadow-[2px_2px_0px_rgba(0,0,0,0.15)] flex flex-col">
-                        <div className="absolute top-[40px] -left-[24px] w-0 h-0 border-y-[16px] border-y-transparent border-r-[24px] border-r-[#1e1e1e]">
-                          <div className="absolute -top-[12px] left-[3px] w-0 h-0 border-y-[12px] border-y-transparent border-r-[18px] border-r-[#ececec]"></div>
-                        </div>
-                        <div className="overflow-y-auto custom-scrollbar flex-1 pr-2">
-                          <p className="text-[#1e1e1e] text-[22px] leading-snug whitespace-pre-wrap">{currentPreviewNode.data.text}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-row flex-wrap justify-center gap-2 mt-4 px-4 pb-2 w-full">
-                      {previewOptions.map((edge, idx) => (
-                        <button key={idx} onClick={() => handlePreviewOption(edge.target)} className="flex-1 bg-[#c6c6c6] border-2 border-[#1e1e1e] shadow-[inset_2px_2px_0px_#ffffff,inset_-2px_-2px_0px_#555555] active:shadow-[inset_2px_2px_0px_#555555,inset_-2px_-2px_0px_#ffffff] py-2.5 px-6 min-w-[150px] max-w-[400px] text-center text-[#1e1e1e] text-xl transition-all focus:outline-none">{edge.data.label || "Continue"}</button>
-                      ))}
-                      {(currentPreviewNode.data.hasCloseButton || previewOptions.length === 0) && (
-                        <button onClick={() => setShowPreview(false)} className="flex-1 bg-[#c6c6c6] border-2 border-[#1e1e1e] shadow-[inset_2px_2px_0px_#ffffff,inset_-2px_-2px_0px_#555555] active:shadow-[inset_2px_2px_0px_#555555,inset_-2px_-2px_0px_#ffffff] py-2.5 px-6 min-w-[150px] max-w-[400px] text-center text-[#1e1e1e] text-xl transition-all focus:outline-none">{currentPreviewNode.data.closeButtonLabel || "Goodbye"}</button>
-                      )}
-                    </div>
+              {showPreview && (
+                <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80 font-minecraft select-none">
+                  
+                  {/* Screen Overlays */}
+                  <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center z-[100]">
+                     {playtestOverlay.title && (
+                       <div className="text-6xl font-bold font-minecraft drop-shadow-[3px_3px_0_#3f3f3f] mb-2 tracking-wide" style={{ color: getColorHex(playtestOverlay.titleColor) }}>{playtestOverlay.title}</div>
+                     )}
+                     {playtestOverlay.subtitle && (
+                       <div className="text-3xl font-bold font-minecraft drop-shadow-[2px_2px_0_#3f3f3f] tracking-wide" style={{ color: getColorHex(playtestOverlay.subtitleColor) }}>{playtestOverlay.subtitle}</div>
+                     )}
+                     {playtestOverlay.actionbar && (
+                       <div className="absolute bottom-24 text-2xl font-bold font-minecraft drop-shadow-[2px_2px_0_#3f3f3f] tracking-wide" style={{ color: getColorHex(playtestOverlay.actionbarColor) }}>{playtestOverlay.actionbar}</div>
+                     )}
                   </div>
+
+                  {/* Top-Right Close Button */}
+                  <button onClick={() => { setPlaytestOverlay({title:'', subtitle:'', actionbar:'', titleColor:'§f', subtitleColor:'§f', actionbarColor:'§f'}); setShowPreview(false); }} className="absolute top-4 right-4 text-white hover:text-red-400 z-50 transition-colors">
+                      <XIcon size={36} strokeWidth={2} />
+                  </button>
+
+                  {previewSceneId === null ? (
+                      /* World View (NPC Selector) */
+                      <div className="relative w-full max-w-4xl bg-[#c6c6c6] border-[3px] border-[#1e1e1e] rounded-xl shadow-[inset_3px_3px_0px_#ffffff,inset_-3px_-3px_0px_#555555] p-8 flex flex-col items-center z-10">
+                         <h2 className="text-[#3c3c3c] text-3xl font-bold tracking-wide mb-8 drop-shadow-sm">Select an NPC</h2>
+                         <div className="flex gap-8 flex-wrap justify-center max-w-3xl">
+                            {cast.map(actor => (
+                                <div key={actor.id} onClick={() => initiateDialogue(actor.id)} className="cursor-pointer group flex flex-col items-center bg-[#ececec] border-[3px] border-[#1e1e1e] rounded-lg p-4 shadow-[2px_2px_0px_rgba(0,0,0,0.15)] hover:bg-white transition-all active:scale-95">
+                                   <div className="w-[160px] h-[220px] pointer-events-none flex items-center justify-center mb-2 overflow-hidden rounded-md">
+                                       <SkinViewer skinUrl={actor.skinUrl} animation="idle" camX={0} camY={14} camZ={45} zoom={0.6} width={160} height={220} />
+                                   </div>
+                                   <div className="text-[#1e1e1e] text-xl font-bold bg-[#c6c6c6] px-4 py-1 rounded border-2 border-[#1e1e1e] shadow-inner w-full text-center truncate">{actor.name}</div>
+                                </div>
+                            ))}
+                         </div>
+                      </div>
+                  ) : (
+                      /* Authentic Bedrock UI Layout */
+                      <div className="relative w-full max-w-4xl bg-[#c6c6c6] border-[3px] border-[#1e1e1e] rounded-xl shadow-[inset_3px_3px_0px_#ffffff,inset_-3px_-3px_0px_#555555] p-3 flex flex-col z-10">
+                        
+                        {/* Title Bar */}
+                        <div className="relative flex justify-center items-center py-2 mb-3">
+                          <h3 className="text-[#3c3c3c] text-2xl tracking-wide font-bold">{previewActor.name}</h3>
+                          <button onClick={() => setPreviewSceneId(null)} className="absolute right-2 top-0 p-1 text-[#555] hover:text-[#1e1e1e] transition-colors"><XIcon size={32} strokeWidth={2.5} /></button>
+                        </div>
+
+                        <div className="flex flex-row gap-6 px-4 pb-2 w-full min-h-[320px]">
+                          
+                          {/* Left Column: Avatar + Buttons */}
+                          <div className="flex flex-col gap-4 w-[200px] flex-shrink-0 h-full">
+                             {/* Avatar Frame */}
+                             <div className="w-full h-[280px] bg-[#484848] border-[3px] border-[#1e1e1e] shadow-[inset_4px_4px_0px_#222,inset_-4px_-4px_0px_#666] flex items-center justify-center overflow-hidden">
+                                <div className="pointer-events-none">
+                                  <SkinViewer skinUrl={previewActor.skinUrl} animation="idle" camX={-15} camY={12} camZ={40} zoom={0.75} width={194} height={274} />
+                                </div>
+                             </div>
+                             
+                             {/* Buttons Container */}
+                             <div className="flex flex-col gap-3 w-full shrink-0">
+                                 {previewOptions.map((edge, idx) => (
+                                    <button key={idx} onClick={() => advancePlaytest(edge.target)} className="w-full bg-[#c6c6c6] border-[3px] border-[#1e1e1e] shadow-[inset_3px_3px_0px_#ffffff,inset_-3px_-3px_0px_#555555] active:shadow-[inset_3px_3px_0px_#555555,inset_-3px_-3px_0px_#ffffff] py-2.5 px-3 text-center text-[#1e1e1e] text-lg transition-all focus:outline-none whitespace-nowrap overflow-hidden text-ellipsis font-bold">{edge.data.label || "Continue"}</button>
+                                  ))}
+                                  {(currentPreviewNode.data.hasCloseButton || previewOptions.length === 0) && (
+                                    <button onClick={() => setPreviewSceneId(null)} className="w-full bg-[#c6c6c6] border-[3px] border-[#1e1e1e] shadow-[inset_3px_3px_0px_#ffffff,inset_-3px_-3px_0px_#555555] active:shadow-[inset_3px_3px_0px_#555555,inset_-3px_-3px_0px_#ffffff] py-2.5 px-3 text-center text-[#1e1e1e] text-lg transition-all focus:outline-none whitespace-nowrap overflow-hidden text-ellipsis font-bold">{currentPreviewNode.data.closeButtonLabel || "Goodbye"}</button>
+                                  )}
+                             </div>
+                          </div>
+
+                          {/* Right Column: Dialogue Text */}
+                          <div className="flex-1 relative bg-white border-[3px] border-[#1e1e1e] rounded-2xl p-6 shadow-[3px_3px_0px_rgba(0,0,0,0.15)] flex flex-col h-[280px]">
+                             {/* Pointer */}
+                              <div className="absolute top-[40px] -left-[24px] w-0 h-0 border-y-[16px] border-y-transparent border-r-[24px] border-r-[#1e1e1e]">
+                                <div className="absolute -top-[12px] left-[4px] w-0 h-0 border-y-[12px] border-y-transparent border-r-[18px] border-r-white"></div>
+                                <div className="absolute -top-[12px] left-[21px] w-[8px] h-[24px] bg-white z-10"></div>
+                              </div>
+
+                              <div className="overflow-y-auto custom-scrollbar flex-1 pr-2">
+                                <p className="text-[#1e1e1e] text-[22px] leading-snug whitespace-pre-wrap font-minecraft">{currentPreviewNode.data.text}</p>
+                              </div>
+                          </div>
+
+                        </div>
+                      </div>
+                  )}
                 </div>
               )}
             </div>
