@@ -62,6 +62,7 @@
         const Folder = (p) => <Icon {...p} d={<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>} />;
         const CopyIcon = (p) => <Icon {...p} d={<><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>} />;
         const CheckIcon = (p) => <Icon {...p} d={<polyline points="20 6 9 17 4 12"/>} />;
+        const SearchIcon = (p) => <Icon {...p} d={<><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>} />;
 
         const generateUUID = () => {
           return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -1784,7 +1785,7 @@
 
               <aside className="w-80 bg-[#252526] border-l border-[#333] flex flex-col shadow-2xl z-20">
                 <div className="p-4 border-b border-[#333] bg-[#1e1e1e]">
-                  <h2 className="text-sm font-bold text-gray-300 uppercase tracking-wider flex items-center gap-2"><Settings size={16} /> Inspector</h2>
+                  <h2 className="text-sm font-bold text-gray-300 uppercase tracking-wider flex items-center gap-2"><SearchIcon size={16} /> Inspector</h2>
                 </div>
                 <div className="p-4 flex-1 overflow-y-auto">
                   {activeNode ? (
@@ -1941,7 +1942,7 @@
                         </div>
                     )
                   ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-4"><Settings size={32} className="opacity-20" /><p className="text-xs font-bold uppercase tracking-widest text-center">Select a node or<br/>connection to edit</p></div>
+                    <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-4"><SearchIcon size={32} className="opacity-20" /><p className="text-xs font-bold uppercase tracking-widest text-center">Select a node or<br/>connection to edit</p></div>
                   )}
                 </div>
               </aside>
