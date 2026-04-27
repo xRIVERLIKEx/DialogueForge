@@ -968,8 +968,8 @@
                 if (!levelGroups[i]) levelGroups[i] = [];
             }
 
-            const NODE_WIDTH = 450; 
-            const NODE_HEIGHT = 400;
+            const NODE_WIDTH = 320; 
+            const NODE_HEIGHT = 300;
 
             const nodeX = {};
             levelGroups.forEach(layer => {
@@ -978,7 +978,7 @@
                 });
             });
 
-            for (let iter = 0; iter < 50; iter++) {
+            for (let iter = 0; iter < 100; iter++) {
                 for (let i = 0; i <= maxLevel; i++) {
                     levelGroups[i].forEach(n => {
                         const parents = edges.filter(e => e.target === n.id).map(e => nodeX[e.source]).filter(x => x !== undefined);
@@ -993,16 +993,25 @@
                     });
 
                     levelGroups[i].sort((a,b) => nodeX[a.id] - nodeX[b.id]);
+                    
+                    let sumX = 0;
+                    levelGroups[i].forEach(n => sumX += nodeX[n.id]);
+                    const comBefore = levelGroups[i].length > 0 ? sumX / levelGroups[i].length : 0;
+
                     for (let j = 1; j < levelGroups[i].length; j++) {
                         const leftNode = levelGroups[i][j-1];
                         const rightNode = levelGroups[i][j];
-                        const diff = nodeX[rightNode.id] - nodeX[leftNode.id];
-                        if (diff < NODE_WIDTH) {
-                            const overlap = NODE_WIDTH - diff;
-                            nodeX[rightNode.id] += overlap / 2 + 5; 
-                            nodeX[leftNode.id] -= overlap / 2 + 5;
+                        if (nodeX[rightNode.id] < nodeX[leftNode.id] + NODE_WIDTH) {
+                            nodeX[rightNode.id] = nodeX[leftNode.id] + NODE_WIDTH;
                         }
                     }
+
+                    let sumXAfter = 0;
+                    levelGroups[i].forEach(n => sumXAfter += nodeX[n.id]);
+                    const comAfter = levelGroups[i].length > 0 ? sumXAfter / levelGroups[i].length : 0;
+
+                    const drift = comAfter - comBefore;
+                    levelGroups[i].forEach(n => nodeX[n.id] -= drift);
                 }
             }
 
