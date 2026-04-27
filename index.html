@@ -71,6 +71,8 @@
         const CopyIcon = (p) => <Icon {...p} d={<><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>} />;
         const CheckIcon = (p) => <Icon {...p} d={<polyline points="20 6 9 17 4 12"/>} />;
         const SearchIcon = (p) => <Icon {...p} d={<><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>} />;
+        const UndoIcon = (p) => <Icon {...p} d={<><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></>} />;
+        const RedoIcon = (p) => <Icon {...p} d={<><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></>} />;
 
         const generateUUID = () => {
           return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -388,8 +390,8 @@
           
           const [nodeHeights, setNodeHeights] = useState({});
           
-          const [selectedNode, setSelectedNode] = useState(null);
-          const [selectedEdge, setSelectedEdge] = useState(null);
+          const [selectedNodeIds, setSelectedNodeIds] = useState([]);
+          const [selectedEdgeIds, setSelectedEdgeIds] = useState([]);
 
           const [showPreview, setShowPreview] = useState(false);
           const [previewSceneId, setPreviewSceneId] = useState(null); 
@@ -402,14 +404,31 @@
 
           const canvasContainerRef = useRef(null);
           const fileInputRef = useRef(null);
+          const clipboardRef = useRef({ nodes: [], edges: [] });
+          
           const [zoom, setZoom] = useState(1);
           const [pan, setPan] = useState({ x: 0, y: 0 });
           const [isPanning, setIsPanning] = useState(false);
 
-          const [draggingNode, setDraggingNode] = useState(null);
-          const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+          const [dragStartMouse, setDragStartMouse] = useState(null);
+          const [initialNodePositions, setInitialNodePositions] = useState({});
+          
+          const [selectionBox, setSelectionBox] = useState(null);
           const [connectingFrom, setConnectingFrom] = useState(null);
           const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+          // Undo/Redo State
+          const historyRef = useRef([]);
+          const historyIndexRef = useRef(-1);
+          const isUndoRedoRef = useRef(false);
+          const [canUndo, setCanUndo] = useState(false);
+          const [canRedo, setCanRedo] = useState(false);
+          
+          // Latest state ref for keyboard events
+          const latestStateRef = useRef({ nodes, edges, selectedNodeIds, selectedEdgeIds });
+          useEffect(() => {
+              latestStateRef.current = { nodes, edges, selectedNodeIds, selectedEdgeIds };
+          }, [nodes, edges, selectedNodeIds, selectedEdgeIds]);
 
           useEffect(() => {
              const screenWidth = window.innerWidth || 1200;
@@ -418,7 +437,7 @@
              
              setNodes([{ 
                  id: 'start_scene', 
-                 data: { sceneName: 'Main Scene', text: 'Click here to edit this starting dialogue.', speakerId: 'char_1', isStart: true, hasCloseButton: false, closeButtonLabel: 'Leave', despawnCast: false }, 
+                 data: { sceneName: 'Main Scene', text: 'Click here to edit this starting dialogue.', speakerId: 'char_1', isStart: true, hasCloseButton: false, closeButtonLabel: 'Close', despawnCast: false }, 
                  position: { x: centerNodeX, y: 80 } 
              }]);
           }, []);
@@ -459,12 +478,142 @@
               return () => clearTimeout(timer);
           }, [playtestOverlay.title, playtestOverlay.subtitle]);
 
+          // History tracking hook (Debounced)
+          useEffect(() => {
+              if (isUndoRedoRef.current) {
+                  isUndoRedoRef.current = false;
+                  return;
+              }
+              
+              const timer = setTimeout(() => {
+                  const nextIdx = historyIndexRef.current + 1;
+                  const newHistory = historyRef.current.slice(0, nextIdx);
+                  const lastState = newHistory[newHistory.length - 1];
+                  const currentStateStr = JSON.stringify({nodes, edges});
+                  
+                  if (!lastState || JSON.stringify(lastState) !== currentStateStr) {
+                      newHistory.push({nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges))});
+                      if (newHistory.length > 50) newHistory.shift();
+                      historyRef.current = newHistory;
+                      historyIndexRef.current = newHistory.length - 1;
+                      setCanUndo(historyIndexRef.current > 0);
+                      setCanRedo(false);
+                  }
+              }, 500);
+
+              return () => clearTimeout(timer);
+          }, [nodes, edges]);
+
+          const handleUndo = useCallback(() => {
+              if (historyIndexRef.current > 0) {
+                  isUndoRedoRef.current = true;
+                  historyIndexRef.current -= 1;
+                  const prevState = historyRef.current[historyIndexRef.current];
+                  setNodes(prevState.nodes);
+                  setEdges(prevState.edges);
+                  setSelectedNodeIds([]);
+                  setSelectedEdgeIds([]);
+                  setCanUndo(historyIndexRef.current > 0);
+                  setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
+              }
+          }, []);
+
+          const handleRedo = useCallback(() => {
+              if (historyIndexRef.current < historyRef.current.length - 1) {
+                  isUndoRedoRef.current = true;
+                  historyIndexRef.current += 1;
+                  const nextState = historyRef.current[historyIndexRef.current];
+                  setNodes(nextState.nodes);
+                  setEdges(nextState.edges);
+                  setSelectedNodeIds([]);
+                  setSelectedEdgeIds([]);
+                  setCanUndo(historyIndexRef.current > 0);
+                  setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
+              }
+          }, []);
+
+          useEffect(() => {
+              const handleKeyDown = (e) => {
+                  const isInputActive = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+                  const { nodes: currentNodes, edges: currentEdges, selectedNodeIds: currentSelectedNodes, selectedEdgeIds: currentSelectedEdges } = latestStateRef.current;
+
+                  if (e.ctrlKey || e.metaKey) {
+                      if (e.key.toLowerCase() === 'z') {
+                          if (!isInputActive) e.preventDefault();
+                          if (isInputActive) return;
+                          
+                          if (e.shiftKey) {
+                              handleRedo();
+                          } else {
+                              handleUndo();
+                          }
+                      } else if (e.key.toLowerCase() === 'y') {
+                          if (!isInputActive) e.preventDefault();
+                          if (isInputActive) return;
+                          
+                          handleRedo();
+                      } else if (e.key.toLowerCase() === 'c' && !isInputActive) {
+                          e.preventDefault();
+                          const copiedNodes = currentNodes.filter(n => currentSelectedNodes.includes(n.id));
+                          const copiedEdges = currentEdges.filter(ed => 
+                              currentSelectedEdges.includes(ed.id) || 
+                              (currentSelectedNodes.includes(ed.source) && currentSelectedNodes.includes(ed.target))
+                          );
+                          clipboardRef.current = { nodes: JSON.parse(JSON.stringify(copiedNodes)), edges: JSON.parse(JSON.stringify(copiedEdges)) };
+                      } else if (e.key.toLowerCase() === 'v' && !isInputActive) {
+                          e.preventDefault();
+                          if (clipboardRef.current.nodes.length === 0) return;
+                          
+                          const idMap = {};
+                          const newNodes = clipboardRef.current.nodes.map(n => {
+                              const newId = n.data.isChangeScene || n.data.isActionbar ? `logic_${Math.random().toString(36).substring(2, 6)}` : `scene_${Math.random().toString(36).substring(2, 6)}`;
+                              idMap[n.id] = newId;
+                              return { ...n, id: newId, position: { x: n.position.x + 40, y: n.position.y + 40 } };
+                          });
+                          
+                          const newEdges = clipboardRef.current.edges.map(ed => {
+                              const newSource = idMap[ed.source] || ed.source; 
+                              const newTarget = idMap[ed.target] || ed.target;
+                              return { ...ed, id: `edge_${Date.now()}_${Math.random().toString(36).substring(2,6)}`, source: newSource, target: newTarget };
+                          }).filter(ed => ed.source && ed.target);
+                          
+                          setNodes(nds => [...nds, ...newNodes]);
+                          setEdges(eds => [...eds, ...newEdges]);
+                          setSelectedNodeIds(newNodes.map(n => n.id));
+                          setSelectedEdgeIds(newEdges.map(e => e.id));
+                      }
+                  }
+                  
+                  if ((e.key === 'Delete' || e.key === 'Backspace') && !isInputActive) {
+                      e.preventDefault();
+                      if (currentSelectedNodes.length > 0) {
+                          setNodes(nds => nds.filter(n => !currentSelectedNodes.includes(n.id)));
+                          setEdges(eds => eds.filter(ed => !currentSelectedNodes.includes(ed.source) && !currentSelectedNodes.includes(ed.target)));
+                          setSelectedNodeIds([]);
+                      }
+                      if (currentSelectedEdges.length > 0) {
+                          setEdges(eds => eds.filter(ed => !currentSelectedEdges.includes(ed.id)));
+                          setSelectedEdgeIds([]);
+                      }
+                  }
+              };
+              window.addEventListener('keydown', handleKeyDown);
+              return () => window.removeEventListener('keydown', handleKeyDown);
+          }, [handleUndo, handleRedo]);
+
           const handleCanvasMouseDown = (e) => {
             if (e.target === canvasContainerRef.current || e.target.tagName === 'DIV') {
-              setIsPanning(true);
+                if (e.shiftKey) {
+                    const rect = canvasContainerRef.current.getBoundingClientRect();
+                    const logicalX = (e.clientX - rect.left - pan.x) / zoom;
+                    const logicalY = (e.clientY - rect.top - pan.y) / zoom;
+                    setSelectionBox({ startX: logicalX, startY: logicalY, currentX: logicalX, currentY: logicalY });
+                } else {
+                    setIsPanning(true);
+                    setSelectedNodeIds([]);
+                    setSelectedEdgeIds([]);
+                }
             }
-            setSelectedNode(null);
-            setSelectedEdge(null);
           };
 
           const handleWheel = (e) => {
@@ -511,25 +660,75 @@
             const logicalY = (e.clientY - rect.top - pan.y) / zoom;
             setMousePos({ x: logicalX, y: logicalY });
 
-            if (draggingNode) {
-              setNodes(nds => nds.map(n => n.id === draggingNode ? {
-                ...n, position: { x: logicalX - dragOffset.x, y: logicalY - dragOffset.y }
-              } : n));
+            if (selectionBox) {
+                const currentX = logicalX;
+                const currentY = logicalY;
+                setSelectionBox(prev => ({ ...prev, currentX, currentY }));
+                
+                const boxLeft = Math.min(selectionBox.startX, currentX);
+                const boxRight = Math.max(selectionBox.startX, currentX);
+                const boxTop = Math.min(selectionBox.startY, currentY);
+                const boxBottom = Math.max(selectionBox.startY, currentY);
+                
+                const newSelectedNodeIds = nodes.filter(n => {
+                    const nodeLeft = n.position.x;
+                    const nodeRight = n.position.x + 256; 
+                    const nodeTop = n.position.y;
+                    const h = nodeHeights[n.id] || 144;
+                    const nodeBottom = n.position.y + h; 
+                    return !(nodeRight < boxLeft || nodeLeft > boxRight || nodeBottom < boxTop || nodeTop > boxBottom);
+                }).map(n => n.id);
+                
+                setSelectedNodeIds(newSelectedNodeIds);
+                return;
+            }
+
+            if (dragStartMouse) {
+              const deltaX = logicalX - dragStartMouse.x;
+              const deltaY = logicalY - dragStartMouse.y;
+              
+              setNodes(nds => nds.map(n => {
+                  if (selectedNodeIds.includes(n.id) && initialNodePositions[n.id]) {
+                      return { ...n, position: { x: initialNodePositions[n.id].x + deltaX, y: initialNodePositions[n.id].y + deltaY } };
+                  }
+                  return n;
+              }));
+              return;
             }
           };
 
           const handleNodeMouseDown = (e, node) => {
             e.stopPropagation();
-            setSelectedNode(node);
-            setSelectedEdge(null);
-            
             if (!canvasContainerRef.current) return;
             const rect = canvasContainerRef.current.getBoundingClientRect();
             const logicalX = (e.clientX - rect.left - pan.x) / zoom;
             const logicalY = (e.clientY - rect.top - pan.y) / zoom;
+
+            let currentSelected = [...selectedNodeIds];
+            if (e.shiftKey) {
+                if (currentSelected.includes(node.id)) {
+                    currentSelected = currentSelected.filter(id => id !== node.id);
+                } else {
+                    currentSelected.push(node.id);
+                }
+                setSelectedNodeIds(currentSelected);
+            } else {
+                if (!currentSelected.includes(node.id)) {
+                    currentSelected = [node.id];
+                    setSelectedNodeIds(currentSelected);
+                }
+            }
             
-            setDraggingNode(node.id);
-            setDragOffset({ x: logicalX - node.position.x, y: logicalY - node.position.y });
+            setSelectedEdgeIds([]);
+
+            setDragStartMouse({ x: logicalX, y: logicalY });
+            const initialPos = {};
+            nodes.forEach(n => {
+                if (currentSelected.includes(n.id)) {
+                    initialPos[n.id] = { ...n.position };
+                }
+            });
+            setInitialNodePositions(initialPos);
           };
 
           const handleSourceMouseDown = (e, nodeId) => {
@@ -551,6 +750,15 @@
                   return; 
               }
 
+              if (sourceNode && !sourceNode.data.isChangeScene && !sourceNode.data.isActionbar) {
+                  const currentEdgesCount = edges.filter(e => e.source === connectingFrom).length;
+                  const hasClose = sourceNode.data.hasCloseButton ? 1 : 0;
+                  if (currentEdgesCount + hasClose >= 6) {
+                      setConnectingFrom(null);
+                      return; 
+                  }
+              }
+
               const newEdge = {
                 id: `edge_${Date.now()}`,
                 source: connectingFrom,
@@ -558,8 +766,8 @@
                 data: isChainLink ? {} : { label: 'Continue', giveItem: '', soundId: '', commands: '', despawnCast: false }
               };
               setEdges(eds => [...eds, newEdge]);
-              setSelectedEdge(newEdge);
-              setSelectedNode(null);
+              setSelectedEdgeIds([newEdge.id]);
+              setSelectedNodeIds([]);
             }
             setConnectingFrom(null);
           };
@@ -567,12 +775,25 @@
           const handleMouseUp = (e) => {
             if (connectingFrom && e?.type === 'mouseup') {
               const sourceNode = nodes.find(n => n.id === connectingFrom);
+              
+              if (sourceNode && !sourceNode.data.isChangeScene && !sourceNode.data.isActionbar) {
+                  const currentEdgesCount = edges.filter(ed => ed.source === connectingFrom).length;
+                  const hasClose = sourceNode.data.hasCloseButton ? 1 : 0;
+                  if (currentEdgesCount + hasClose >= 6) {
+                      setDragStartMouse(null);
+                      setSelectionBox(null);
+                      setConnectingFrom(null);
+                      setIsPanning(false);
+                      return; 
+                  }
+              }
+
               const isChainLink = sourceNode?.data.isChangeScene || sourceNode?.data.isActionbar;
 
               const hash = Math.random().toString(36).substring(2, 6);
               const newNodeId = isChainLink ? `logic_${hash}` : `scene_${hash}`;
               
-              let newNodeData = { text: 'Click to edit this new dialogue.', speakerId: activeActorId, hasCloseButton: false, closeButtonLabel: 'Goodbye', despawnCast: false };
+              let newNodeData = { text: 'Click to edit this new dialogue.', speakerId: activeActorId, hasCloseButton: false, closeButtonLabel: 'Close', despawnCast: false };
               if (sourceNode?.data.isChangeScene) {
                   newNodeData = { isChangeScene: true, targetNodeId: '', silentUpdate: true };
               } else if (sourceNode?.data.isActionbar) {
@@ -594,11 +815,12 @@
 
               setNodes(nds => [...nds, newNode]);
               setEdges(eds => [...eds, newEdge]);
-              setSelectedNode(newNode);
-              setSelectedEdge(null);
+              setSelectedNodeIds([newNode.id]);
+              setSelectedEdgeIds([]);
             }
 
-            setDraggingNode(null);
+            setDragStartMouse(null);
+            setSelectionBox(null);
             setConnectingFrom(null);
             setIsPanning(false);
           };
@@ -641,27 +863,21 @@
           };
 
           const updateNodeData = (id, newData) => {
-            let updated = null;
             setNodes((nds) => nds.map((n) => {
               if (n.id === id) {
-                updated = { ...n, data: { ...n.data, ...newData } };
-                return updated;
+                return { ...n, data: { ...n.data, ...newData } };
               }
               return n;
             }));
-            if (selectedNode?.id === id && updated) setSelectedNode(updated);
           };
 
           const updateEdgeData = (id, newData) => {
-            let updated = null;
             setEdges((eds) => eds.map((e) => {
               if (e.id === id) {
-                updated = { ...e, data: { ...e.data, ...newData } };
-                return updated;
+                return { ...e, data: { ...e.data, ...newData } };
               }
               return e;
             }));
-            if (selectedEdge?.id === id && updated) setSelectedEdge(updated);
           };
 
           const addDialogueNode = (type = 'scene') => {
@@ -680,16 +896,18 @@
             };
 
             if (type === 'start') {
-              newNode.data = { sceneName: 'New Start', text: 'Click to edit this new starting dialogue.', speakerId: activeActorId, isStart: true, hasCloseButton: false, closeButtonLabel: 'Goodbye', despawnCast: false };
+              newNode.data = { sceneName: 'New Start', text: 'Click to edit this new starting dialogue.', speakerId: activeActorId, isStart: true, hasCloseButton: false, closeButtonLabel: 'Close', despawnCast: false };
             } else if (type === 'change') {
               newNode.data = { isChangeScene: true, targetNodeId: '', silentUpdate: true };
             } else if (type === 'actionbar') {
               newNode.data = { isActionbar: true, actionbarText: '', targetPlayer: '@initiator', displaySlot: 'actionbar', textColor: '§f', subtitleColor: '§f' };
             } else {
-              newNode.data = { text: 'Click to edit this new dialogue.', speakerId: activeActorId, isStart: false, hasCloseButton: false, closeButtonLabel: 'Goodbye', despawnCast: false };
+              newNode.data = { text: 'Click to edit this new dialogue.', speakerId: activeActorId, isStart: false, hasCloseButton: false, closeButtonLabel: 'Close', despawnCast: false };
             }
 
             setNodes((nds) => nds.concat(newNode));
+            setSelectedNodeIds([newNode.id]);
+            setSelectedEdgeIds([]);
           };
 
           const autoLayout = () => {
@@ -860,8 +1078,8 @@
                 }
                 if (data.nodes && Array.isArray(data.nodes)) setNodes(data.nodes);
                 if (data.edges && Array.isArray(data.edges)) setEdges(data.edges);
-                setSelectedNode(null);
-                setSelectedEdge(null);
+                setSelectedNodeIds([]);
+                setSelectedEdgeIds([]);
                 setLoadError('');
               } catch (err) {
                 console.error("Failed to load project:", err);
@@ -887,8 +1105,8 @@
             
             setTimeout(() => {
                 setPdfMode(true);
-                setSelectedNode(null);
-                setSelectedEdge(null);
+                setSelectedNodeIds([]);
+                setSelectedEdgeIds([]);
                 
                 setTimeout(async () => {
                     try {
@@ -1036,7 +1254,7 @@
 
                 if (node.data.hasCloseButton || outgoingEdges.length === 0) {
                   const closeBtn = {
-                      name: node.data.closeButtonLabel || "Goodbye"
+                      name: node.data.closeButtonLabel || "Close"
                   };
                   if (node.data.despawnCast) {
                       closeBtn.commands = getDespawnCommands();
@@ -1044,11 +1262,13 @@
                   buttons.push(closeBtn);
                 }
 
+                const safelyCappedButtons = buttons.slice(0, 6);
+
                 return {
                   scene_tag: `${safeName}_${node.id}`,
                   npc_name: currentActor.name,
                   text: node.data.text,
-                  buttons: buttons.length > 0 ? buttons : undefined
+                  buttons: safelyCappedButtons.length > 0 ? safelyCappedButtons : undefined
                 };
               });
           };
@@ -1342,8 +1562,8 @@
           const previewOptions = edges.filter(e => e.source === previewSceneId);
           const previewActor = cast.find(c => c.id === currentPreviewNode?.data?.speakerId) || cast[0];
 
-          const activeNode = nodes.find(n => n.id === selectedNode?.id);
-          const activeEdge = edges.find(e => e.id === selectedEdge?.id);
+          const activeNode = selectedNodeIds.length === 1 ? nodes.find(n => n.id === selectedNodeIds[0]) : null;
+          const activeEdge = selectedEdgeIds.length === 1 && selectedNodeIds.length === 0 ? edges.find(e => e.id === selectedEdgeIds[0]) : null;
           
           let isEdgeFromLogicNode = false;
           if (activeEdge) {
@@ -1357,6 +1577,37 @@
           const minY = nodes.length > 0 ? Math.min(...nodes.map(n => n.position.y)) : 0;
           const graphWidth = nodes.length > 0 ? Math.max(...nodes.map(n => n.position.x)) - minX + 600 : 800;
           const graphHeight = nodes.length > 0 ? Math.max(...nodes.map(n => n.position.y)) - minY + 500 : 600;
+
+          const outgoingEdgesCount = activeNode ? edges.filter(e => e.source === activeNode.id).length : 0;
+          const maxEdgesReached = outgoingEdgesCount >= 6 && !(activeNode?.data?.hasCloseButton ?? false);
+
+          const generatePlaytestButtons = () => {
+              const allButtons = [
+                  ...previewOptions.map((edge, idx) => (
+                      <button 
+                          key={idx} 
+                          onClick={() => advancePlaytest(edge.target)} 
+                          className="w-full bg-[#c6c6c6] border-[3px] border-[#1e1e1e] shadow-[inset_3px_3px_0px_#ffffff,inset_-3px_-3px_0px_#555555] active:shadow-[inset_3px_3px_0px_#555555,inset_-3px_-3px_0px_#ffffff] py-2.5 px-3 text-center text-[#1e1e1e] text-lg transition-all focus:outline-none whitespace-nowrap overflow-hidden text-ellipsis font-bold"
+                      >
+                          {edge.data.label || "Continue"}
+                      </button>
+                  ))
+              ];
+              
+              if (currentPreviewNode.data.hasCloseButton || previewOptions.length === 0) {
+                  allButtons.push(
+                      <button 
+                          key="close_btn" 
+                          onClick={() => setPreviewSceneId(null)} 
+                          className="w-full bg-[#c6c6c6] border-[3px] border-[#1e1e1e] shadow-[inset_3px_3px_0px_#ffffff,inset_-3px_-3px_0px_#555555] active:shadow-[inset_3px_3px_0px_#555555,inset_-3px_-3px_0px_#ffffff] py-2.5 px-3 text-center text-[#1e1e1e] text-lg transition-all focus:outline-none whitespace-nowrap overflow-hidden text-ellipsis font-bold"
+                      >
+                          {currentPreviewNode.data.closeButtonLabel || "Close"}
+                      </button>
+                  );
+              }
+              
+              return allButtons.slice(0, 6);
+          };
 
           return (
             <div className="flex h-screen w-screen bg-[#1e1e1e] font-sans text-gray-200 overflow-hidden">
@@ -1502,8 +1753,8 @@
                                       "{node.data.text}"
                                   </div>
                               </div>
-                              {!node.data.isStart && <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-gray-400 border-[3px] border-[#151515] rounded-sm cursor-crosshair hover:bg-gray-200 transition-colors z-40 pointer-events-auto" onMouseUp={(e) => handleTargetMouseUp(e, node.id)} onMouseDown={(e) => e.stopPropagation()} />}
-                              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-yellow-500 border-[3px] border-[#151515] rounded-sm cursor-crosshair hover:bg-yellow-400 transition-colors z-40 pointer-events-auto" onMouseDown={(e) => handleSourceMouseDown(e, node.id)} />
+                              {!node.data.isStart && <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 bg-gray-400 border-[3px] border-[#151515] rounded-sm" />}
+                              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-6 h-6 bg-yellow-500 border-[3px] border-[#151515] rounded-sm" />
                           </div>
                       )})}
                   </div>
@@ -1645,7 +1896,7 @@
                              const startY = sourceNode.position.y + sHeight;
                              const endX = targetNode.position.x + 128;
                              const endY = targetNode.position.y;
-                             const isSelected = selectedEdge?.id === edge.id;
+                             const isSelected = selectedEdgeIds.includes(edge.id);
                              
                              const isChainLink = sourceNode.data.isChangeScene || sourceNode.data.isActionbar;
                              const linkColor = sourceNode.data.isActionbar ? "#06b6d4" : "#8b5cf6";
@@ -1653,7 +1904,7 @@
                              
                              return (
                                <React.Fragment key={edge.id}>
-                                 <path d={pathD} stroke={isSelected ? '#eab308' : (isChainLink ? linkColor : '#666')} strokeWidth={isSelected ? 4 : (isChainLink ? 3 : 2)} strokeDasharray="none" fill="none" className="pointer-events-auto cursor-pointer transition-all" onClick={(e) => { e.stopPropagation(); setSelectedEdge(edge); setSelectedNode(null); }} />
+                                 <path d={pathD} stroke={isSelected ? '#eab308' : (isChainLink ? linkColor : '#666')} strokeWidth={isSelected ? 4 : (isChainLink ? 3 : 2)} strokeDasharray="none" fill="none" className="pointer-events-auto cursor-pointer transition-all" onClick={(e) => { e.stopPropagation(); setSelectedEdgeIds([edge.id]); setSelectedNodeIds([]); }} />
                                </React.Fragment>
                              );
                           })}
@@ -1692,17 +1943,29 @@
                              const { midX, midY } = calculateEdgePath(startX, startY, endX, endY, edge.id);
                              
                              return (
-                                <div key={`label_${edge.id}`} className={`absolute bg-[#222] text-white px-2 py-1 rounded text-[10px] font-bold shadow-lg border cursor-pointer pointer-events-auto transition-colors hover:border-yellow-400 ${selectedEdge?.id === edge.id ? 'border-yellow-500' : 'border-[#555]'}`} style={{ left: midX, top: midY, transform: 'translate(-50%, -50%)' }} onClick={(e) => { e.stopPropagation(); setSelectedEdge(edge); setSelectedNode(null); }}>
+                                <div key={`label_${edge.id}`} className={`absolute bg-[#222] text-white px-2 py-1 rounded text-[10px] font-bold shadow-lg border cursor-pointer pointer-events-auto transition-colors hover:border-yellow-400 ${selectedEdgeIds.includes(edge.id) ? 'border-yellow-500' : 'border-[#555]'}`} style={{ left: midX, top: midY, transform: 'translate(-50%, -50%)' }} onClick={(e) => { e.stopPropagation(); setSelectedEdgeIds([edge.id]); setSelectedNodeIds([]); }}>
                                     {edge.data.label || 'Continue'}
                                 </div>
                              )
                             })}
                         </div>
 
+                        {selectionBox && (
+                            <div 
+                                className="absolute bg-blue-500/20 border border-blue-500 z-50 pointer-events-none"
+                                style={{
+                                    left: Math.min(selectionBox.startX, selectionBox.currentX),
+                                    top: Math.min(selectionBox.startY, selectionBox.currentY),
+                                    width: Math.abs(selectionBox.currentX - selectionBox.startX),
+                                    height: Math.abs(selectionBox.currentY - selectionBox.startY)
+                                }}
+                            />
+                        )}
+
                         {nodes.map(node => {
                             if (node.data.isChangeScene) {
                                 return (
-                                    <div key={node.id} id={`node_${node.id}`} className={`absolute w-64 p-0 rounded-md border-2 shadow-2xl transition-transform cursor-move bg-[#2d1b4e] ${selectedNode?.id === node.id ? 'border-purple-400 z-30' : 'border-[#4c1d95] z-20'} ${draggingNode === node.id ? 'opacity-90' : 'opacity-100'}`} style={{ left: node.position.x, top: node.position.y }} onMouseDown={(e) => handleNodeMouseDown(e, node)} onClick={(e) => e.stopPropagation()}>
+                                    <div key={node.id} id={`node_${node.id}`} className={`absolute w-64 p-0 rounded-md border-2 shadow-2xl transition-transform cursor-move bg-[#2d1b4e] ${selectedNodeIds.includes(node.id) ? 'border-purple-400 ring-2 ring-white z-30 scale-[1.02]' : 'border-[#4c1d95] z-20'} ${dragStartMouse && selectedNodeIds.includes(node.id) ? 'opacity-80' : 'opacity-100'}`} style={{ left: node.position.x, top: node.position.y }} onMouseDown={(e) => handleNodeMouseDown(e, node)} onClick={(e) => e.stopPropagation()}>
                                         <div className="bg-[#1e1e1e] p-2 flex items-center justify-between border-b-2 border-[#151515]">
                                             <div className="flex items-center gap-2">
                                                 <div className="w-3 h-3 rounded-full border border-black shadow-inner bg-purple-500" />
@@ -1735,7 +1998,7 @@
                                 );
                             } else if (node.data.isActionbar) {
                                 return (
-                                    <div key={node.id} id={`node_${node.id}`} className={`absolute w-64 p-0 rounded-md border-2 shadow-2xl transition-transform cursor-move bg-[#083344] ${selectedNode?.id === node.id ? 'border-cyan-400 z-30' : 'border-[#0891b2] z-20'} ${draggingNode === node.id ? 'opacity-90' : 'opacity-100'}`} style={{ left: node.position.x, top: node.position.y }} onMouseDown={(e) => handleNodeMouseDown(e, node)} onClick={(e) => e.stopPropagation()}>
+                                    <div key={node.id} id={`node_${node.id}`} className={`absolute w-64 p-0 rounded-md border-2 shadow-2xl transition-transform cursor-move bg-[#083344] ${selectedNodeIds.includes(node.id) ? 'border-cyan-400 ring-2 ring-white z-30 scale-[1.02]' : 'border-[#0891b2] z-20'} ${dragStartMouse && selectedNodeIds.includes(node.id) ? 'opacity-80' : 'opacity-100'}`} style={{ left: node.position.x, top: node.position.y }} onMouseDown={(e) => handleNodeMouseDown(e, node)} onClick={(e) => e.stopPropagation()}>
                                         <div className="bg-[#1e1e1e] p-2 flex items-center justify-between border-b-2 border-[#151515]">
                                             <div className="flex items-center gap-2">
                                                 <div className="w-3 h-3 rounded-full border border-black shadow-inner bg-cyan-500" />
@@ -1765,11 +2028,11 @@
 
                             const nodeActor = cast.find(c => c.id === node.data.speakerId) || cast[0];
                             return (
-                            <div key={node.id} id={`node_${node.id}`} className={`absolute w-64 p-0 rounded-md border-2 shadow-2xl transition-transform cursor-move bg-[#2c2c2c] ${selectedNode?.id === node.id ? 'border-blue-400 z-30' : 'border-[#4a4a4a] z-20'} ${draggingNode === node.id ? 'opacity-90' : 'opacity-100'}`} style={{ left: node.position.x, top: node.position.y }} onMouseDown={(e) => handleNodeMouseDown(e, node)} onClick={(e) => e.stopPropagation()}>
+                            <div key={node.id} id={`node_${node.id}`} className={`absolute w-64 p-0 rounded-md border-2 shadow-2xl transition-transform cursor-move bg-[#2c2c2c] ${selectedNodeIds.includes(node.id) ? 'border-blue-400 ring-2 ring-white z-30 scale-[1.02]' : 'border-[#4a4a4a] z-20'} ${dragStartMouse && selectedNodeIds.includes(node.id) ? 'opacity-80' : 'opacity-100'}`} style={{ left: node.position.x, top: node.position.y }} onMouseDown={(e) => handleNodeMouseDown(e, node)} onClick={(e) => e.stopPropagation()}>
                                 <div className="bg-[#1e1e1e] p-2 flex items-center justify-between border-b-2 border-[#151515]">
                                     <div className="flex items-center gap-2">
                                         <div className={`w-3 h-3 rounded-full border border-black shadow-inner ${node.data.isStart ? 'bg-green-500' : 'bg-blue-500'}`} />
-                                        <span className="text-gray-300 text-xs font-bold uppercase tracking-wider">{node.data.isStart ? (node.data.sceneName || 'Start Scene') : 'Scene'}</span>
+                                        <span className="text-gray-200 text-sm font-bold uppercase tracking-wider">{node.data.isStart ? (node.data.sceneName || 'Start Scene') : 'Scene'}</span>
                                     </div>
                                     <span className="text-[10px] text-gray-500 font-mono">{node.id.substring(6,10)}</span>
                                 </div>
@@ -1793,6 +2056,10 @@
                     </div>
 
                     <div className="absolute top-4 left-4 flex gap-2 z-40" onMouseDown={e => e.stopPropagation()}>
+                      <div className="flex bg-[#333] border border-[#555] rounded-md shadow-lg overflow-hidden">
+                         <button onClick={handleUndo} disabled={!canUndo} className="p-2 text-gray-300 hover:text-white hover:bg-[#444] disabled:opacity-30 disabled:cursor-not-allowed transition-colors border-r border-[#555]" title="Undo (Ctrl+Z)"><UndoIcon size={16} /></button>
+                         <button onClick={handleRedo} disabled={!canRedo} className="p-2 text-gray-300 hover:text-white hover:bg-[#444] disabled:opacity-30 disabled:cursor-not-allowed transition-colors" title="Redo (Ctrl+Y)"><RedoIcon size={16} /></button>
+                      </div>
                       <div className="flex bg-[#333] border border-[#555] rounded-md shadow-lg overflow-hidden">
                          <button onClick={() => addDialogueNode('scene')} className="hover:bg-[#444] text-white px-3 py-2 font-bold flex items-center gap-1.5 transition-all text-xs active:bg-[#555] border-r border-[#555]"><Plus size={14} /> Scene</button>
                          <button onClick={() => addDialogueNode('start')} className="hover:bg-[#444] text-green-400 px-3 py-2 font-bold flex items-center gap-1.5 transition-all text-xs active:bg-[#555] border-r border-[#555]"><Plus size={14} /> Start</button>
@@ -1860,7 +2127,16 @@
                   <h2 className="text-sm font-bold text-gray-300 uppercase tracking-wider flex items-center gap-2"><SearchIcon size={16} /> Inspector</h2>
                 </div>
                 <div className="p-4 flex-1 overflow-y-auto">
-                  {activeNode ? (
+                  {selectedNodeIds.length > 1 ? (
+                      <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-4 animate-in fade-in duration-200">
+                        <CopyIcon size={32} className="text-blue-400 opacity-80" />
+                        <p className="text-sm font-bold uppercase tracking-widest text-center text-blue-400">{selectedNodeIds.length} Nodes Selected</p>
+                        <p className="text-[11px] uppercase text-center mt-2 text-gray-400 leading-relaxed">
+                            Use <kbd className="bg-[#111] px-1 py-0.5 rounded border border-[#333] font-mono text-[10px] text-gray-300">Ctrl+C</kbd> to copy<br/>
+                            or <kbd className="bg-[#111] px-1 py-0.5 rounded border border-[#333] font-mono text-[10px] text-gray-300">Delete</kbd> to remove.
+                        </p>
+                      </div>
+                  ) : activeNode ? (
                     activeNode.data.isChangeScene ? (
                         <div className="space-y-4 animate-in fade-in duration-200">
                             <div className="flex items-center gap-2 text-purple-400 mb-3 pb-2 border-b border-[#444]"><Network size={16} /> <span className="font-bold text-sm">Change Scene Edit</span></div>
@@ -1880,7 +2156,7 @@
                                 </label>
                                 <p className="text-[10px] text-gray-500 leading-tight">If checked, the NPC's state updates silently in the background. If unchecked, it will force the player's screen to jump to the new NPC.<br/><br/><strong>Pro Tip:</strong> Connect multiple Change Scene nodes in a chain to update your whole cast at once!</p>
                             </div>
-                            <button onClick={() => { setNodes(nds => nds.filter(n => n.id !== activeNode.id)); setEdges(eds => eds.filter(e => e.source !== activeNode.id && e.target !== activeNode.id)); setSelectedNode(null); }} className="w-full flex items-center justify-center gap-2 mt-3 p-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded text-xs font-bold transition-all"><Trash2 size={14} /> Delete Node</button>
+                            <button onClick={() => { setNodes(nds => nds.filter(n => n.id !== activeNode.id)); setEdges(eds => eds.filter(e => e.source !== activeNode.id && e.target !== activeNode.id)); setSelectedNodeIds([]); }} className="w-full flex items-center justify-center gap-2 mt-3 p-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded text-xs font-bold transition-all"><Trash2 size={14} /> Delete Node</button>
                         </div>
                     ) : activeNode.data.isActionbar ? (
                         <div className="space-y-4 animate-in fade-in duration-200">
@@ -1938,7 +2214,7 @@
                                 </>
                             )}
 
-                            <button onClick={() => { setNodes(nds => nds.filter(n => n.id !== activeNode.id)); setEdges(eds => eds.filter(e => e.source !== activeNode.id && e.target !== activeNode.id)); setSelectedNode(null); }} className="w-full flex items-center justify-center gap-2 mt-3 p-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded text-xs font-bold transition-all"><Trash2 size={14} /> Delete Node</button>
+                            <button onClick={() => { setNodes(nds => nds.filter(n => n.id !== activeNode.id)); setEdges(eds => eds.filter(e => e.source !== activeNode.id && e.target !== activeNode.id)); setSelectedNodeIds([]); }} className="w-full flex items-center justify-center gap-2 mt-3 p-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded text-xs font-bold transition-all"><Trash2 size={14} /> Delete Node</button>
                         </div>
                     ) : (
                         <div className="space-y-4 animate-in fade-in duration-200">
@@ -1976,15 +2252,24 @@
                               placeholder="Type dialogue here..."
                             />
                           </div>
+                          
                           <div className="space-y-3 mt-3 pt-3 border-t border-[#444]">
-                            <label className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase cursor-pointer">
-                              <input type="checkbox" className="w-3 h-3 accent-blue-500" checked={activeNode.data.hasCloseButton ?? false} onChange={(e) => updateNodeData(activeNode.id, { hasCloseButton: e.target.checked })} /> Add "Close Dialogue" Button
-                            </label>
+                            {(() => {
+                                const maxEdgesReached = outgoingEdgesCount >= 6 && !(activeNode.data.hasCloseButton ?? false);
+                                return (
+                                    <>
+                                        <label className={`flex items-center gap-2 text-[10px] font-bold ${maxEdgesReached ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 cursor-pointer'} uppercase`}>
+                                          <input type="checkbox" className="w-3 h-3 accent-blue-500 disabled:opacity-50" checked={activeNode.data.hasCloseButton ?? false} disabled={maxEdgesReached} onChange={(e) => updateNodeData(activeNode.id, { hasCloseButton: e.target.checked })} /> Add "Close Dialogue" Button
+                                        </label>
+                                        {maxEdgesReached && <p className="text-[9px] text-red-400 leading-tight">Maximum 6 branches reached. Remove a connection first.</p>}
+                                    </>
+                                )
+                            })()}
                             {(activeNode.data.hasCloseButton ?? false) && (
                               <div className="space-y-3">
                                 <div className="space-y-1">
                                   <label className="text-[10px] font-bold text-gray-400 uppercase">Close Button Label</label>
-                                  <input className="w-full bg-[#333] border border-[#444] rounded px-3 py-1.5 text-sm focus:border-blue-500 outline-none transition-colors" placeholder="e.g. Goodbye!" value={activeNode.data.closeButtonLabel || 'Goodbye'} onChange={(e) => updateNodeData(activeNode.id, { closeButtonLabel: e.target.value })} />
+                                  <input className="w-full bg-[#333] border border-[#444] rounded px-3 py-1.5 text-sm focus:border-blue-500 outline-none transition-colors" placeholder="e.g. Close" maxLength={16} value={activeNode.data.closeButtonLabel ?? 'Close'} onChange={(e) => updateNodeData(activeNode.id, { closeButtonLabel: e.target.value })} />
                                 </div>
                                 <label className="flex items-center gap-2 text-[10px] font-bold text-red-400 uppercase cursor-pointer">
                                   <input type="checkbox" className="w-3 h-3 accent-red-500" checked={activeNode.data.despawnCast ?? false} onChange={(e) => updateNodeData(activeNode.id, { despawnCast: e.target.checked })} /> Despawn Whole Cast
@@ -1992,7 +2277,7 @@
                               </div>
                             )}
                           </div>
-                          <button onClick={() => { setNodes(nds => nds.filter(n => n.id !== activeNode.id)); setEdges(eds => eds.filter(e => e.source !== activeNode.id && e.target !== activeNode.id)); setSelectedNode(null); }} className="w-full flex items-center justify-center gap-2 mt-3 p-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded text-xs font-bold transition-all"><Trash2 size={14} /> Delete {activeNode.data.isStart ? 'Start Scene' : 'Scene'}</button>
+                          <button onClick={() => { setNodes(nds => nds.filter(n => n.id !== activeNode.id)); setEdges(eds => eds.filter(e => e.source !== activeNode.id && e.target !== activeNode.id)); setSelectedNodeIds([]); }} className="w-full flex items-center justify-center gap-2 mt-3 p-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded text-xs font-bold transition-all"><Trash2 size={14} /> Delete {activeNode.data.isStart ? 'Start Scene' : 'Scene'}</button>
                         </div>
                     )
                   ) : activeEdge ? (
@@ -2000,14 +2285,14 @@
                         <div className="space-y-4 animate-in fade-in duration-200">
                           <div className="flex items-center gap-2 text-blue-400 mb-3 pb-2 border-b border-[#444]"><Network size={16} /> <span className="font-bold text-sm">Logic Chain Link</span></div>
                           <p className="text-xs text-gray-400 leading-tight">This edge instantly triggers the next logic node in the sequence. It happens entirely in the background and has no visual button.</p>
-                          <button onClick={() => { setEdges(eds => eds.filter(e => e.id !== activeEdge.id)); setSelectedEdge(null); }} className="w-full flex items-center justify-center gap-2 mt-3 p-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded text-xs font-bold transition-all"><Trash2 size={14} /> Delete Connection</button>
+                          <button onClick={() => { setEdges(eds => eds.filter(e => e.id !== activeEdge.id)); setSelectedEdgeIds([]); }} className="w-full flex items-center justify-center gap-2 mt-3 p-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded text-xs font-bold transition-all"><Trash2 size={14} /> Delete Connection</button>
                         </div>
                     ) : (
                         <div className="space-y-4 animate-in fade-in duration-200">
                           <div className="flex items-center gap-2 text-yellow-500 mb-3 pb-2 border-b border-[#444]"><MessageSquare size={16} /> <span className="font-bold text-sm">Button Edit</span></div>
                           <div className="space-y-1">
                             <label className="text-[10px] font-bold text-gray-400 uppercase">Button Label</label>
-                            <input className="w-full bg-[#333] border border-[#444] rounded px-3 py-1.5 text-sm focus:border-yellow-500 outline-none transition-colors" placeholder="e.g. Continue..." value={activeEdge.data.label || ''} onChange={(e) => updateEdgeData(activeEdge.id, { label: e.target.value })} />
+                            <input className="w-full bg-[#333] border border-[#444] rounded px-3 py-1.5 text-sm focus:border-yellow-500 outline-none transition-colors" placeholder="e.g. Continue..." maxLength={16} value={activeEdge.data.label || ''} onChange={(e) => updateEdgeData(activeEdge.id, { label: e.target.value })} />
                           </div>
                           
                           <div className="space-y-1">
@@ -2035,7 +2320,7 @@
                             </label>
                           </div>
 
-                          <button onClick={() => { setEdges(eds => eds.filter(e => e.id !== activeEdge.id)); setSelectedEdge(null); }} className="w-full flex items-center justify-center gap-2 mt-3 p-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded text-xs font-bold transition-all"><Trash2 size={14} /> Delete Connection</button>
+                          <button onClick={() => { setEdges(eds => eds.filter(e => e.id !== activeEdge.id)); setSelectedEdgeIds([]); }} className="w-full flex items-center justify-center gap-2 mt-3 p-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 rounded text-xs font-bold transition-all"><Trash2 size={14} /> Delete Connection</button>
                         </div>
                     )
                   ) : (
@@ -2092,23 +2377,13 @@
 
                         <div className="flex flex-row gap-6 px-4 pb-2 w-full min-h-[320px]">
                           
-                          {/* Left Column: Avatar + Buttons */}
-                          <div className="flex flex-col gap-4 w-[200px] flex-shrink-0 h-full">
+                          {/* Left Column: Avatar */}
+                          <div className="flex flex-col w-[200px] flex-shrink-0">
                              {/* Avatar Frame */}
                              <div className="w-full h-[280px] bg-[#484848] border-[3px] border-[#1e1e1e] shadow-[inset_4px_4px_0px_#222,inset_-4px_-4px_0px_#666] flex items-center justify-center overflow-hidden">
                                 <div className="pointer-events-none">
                                   <SkinViewer skinUrl={previewActor.skinUrl} animation="idle" camX={-15} camY={12} camZ={40} zoom={0.75} width={194} height={274} />
                                 </div>
-                             </div>
-                             
-                             {/* Buttons Container */}
-                             <div className="flex flex-col gap-3 w-full shrink-0">
-                                 {previewOptions.map((edge, idx) => (
-                                    <button key={idx} onClick={() => advancePlaytest(edge.target)} className="w-full bg-[#c6c6c6] border-[3px] border-[#1e1e1e] shadow-[inset_3px_3px_0px_#ffffff,inset_-3px_-3px_0px_#555555] active:shadow-[inset_3px_3px_0px_#555555,inset_-3px_-3px_0px_#ffffff] py-2.5 px-3 text-center text-[#1e1e1e] text-lg transition-all focus:outline-none whitespace-nowrap overflow-hidden text-ellipsis font-bold">{edge.data.label || "Continue"}</button>
-                                  ))}
-                                  {(currentPreviewNode.data.hasCloseButton || previewOptions.length === 0) && (
-                                    <button onClick={() => setPreviewSceneId(null)} className="w-full bg-[#c6c6c6] border-[3px] border-[#1e1e1e] shadow-[inset_3px_3px_0px_#ffffff,inset_-3px_-3px_0px_#555555] active:shadow-[inset_3px_3px_0px_#555555,inset_-3px_-3px_0px_#ffffff] py-2.5 px-3 text-center text-[#1e1e1e] text-lg transition-all focus:outline-none whitespace-nowrap overflow-hidden text-ellipsis font-bold">{currentPreviewNode.data.closeButtonLabel || "Goodbye"}</button>
-                                  )}
                              </div>
                           </div>
 
@@ -2125,6 +2400,13 @@
                               </div>
                           </div>
 
+                        </div>
+                        
+                        {/* Bottom Full-Width Area: 3x2 Grid for Buttons */}
+                        <div className="px-4 pb-2 pt-2 w-full">
+                            <div className="grid grid-cols-3 gap-3 w-full">
+                                {generatePlaytestButtons()}
+                            </div>
                         </div>
                       </div>
                   )}
